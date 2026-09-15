@@ -1,0 +1,15 @@
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local environments and secrets
+.env
+.env.*
+.venv/
+venv/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Kaggle's private scoring labels must not be published.
+data/solution.csv
