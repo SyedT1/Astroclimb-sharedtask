@@ -171,11 +171,12 @@ See [experiments.md](experiments.md) for the experiment sequence and ablations.
 
 ## Experiment results
 
-The following score was obtained by the completed 5K QLoRA notebook. The score is the user-reported Kaggle macro-F1 result.
+The following scores were obtained by the completed QLoRA notebooks. They are user-reported Kaggle macro-F1 results.
 
 | Notebook | Kaggle score | Model | Epochs | Training dataset | Validation dataset | LoRA rank (`r`) | LoRA alpha | LoRA dropout | LoRA target modules |
 |---|---:|---|---:|---:|---:|---:|---:|---:|---|
 | [`astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | **0.67856** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | 5,000 balanced pairs (1,250 per class) | 400 pairs | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | **0.70751** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
 
 The base model was loaded using 4-bit NF4 quantization with double quantization and FP16 computation. Only the LoRA adapters were trained; the underlying model weights remained frozen. Training used random object-order swapping and two-process DDP on two NVIDIA T4 GPUs.
 
@@ -185,7 +186,7 @@ The base model was loaded using 4-bit NF4 quantization with double quantization 
 |---|---|
 | [`astroclimb_run0_qwen3vl_qlora.ipynb`](astroclimb_run0_qwen3vl_qlora.ipynb) | Small end-to-end QLoRA pipeline check. |
 | [`astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | Balanced 5,000-example QLoRA experiment with validation. |
-| [`astroclimb_full10k_qwen3vl_qlora/astroclimb_full10k_qwen3vl_qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb_full10k_qwen3vl_qlora.ipynb) | Final training on all 10,000 labeled pairs, full test inference, and submission generation. |
+| [`astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | Final training on all 10,000 labeled pairs, full test inference, and submission generation. |
 
 For the full notebook, these settings request predictions for the entire test set:
 
