@@ -184,7 +184,7 @@ The following scores were obtained by the completed QLoRA notebooks. They are us
 For every object pair $x_i=(o_{i1},o_{i2})$, the one-hot target is converted to a class index
 
 $$
-y_i=\operatorname*{arg\,max}_{c\in\{0,1,2,3\}}Y_{ic},
+y_i=\arg\max_{c\in\{0,1,2,3\}}Y_{ic},
 $$
 
 where classes $0,1,2,3$ denote `same_figure`, `same_paper`, `related_papers`, and `unrelated_papers`. Let $t_c$ be the tokenizer ID of the single digit token representing class $c$, and let $z_{i,v}$ be the model logit for vocabulary token $v$ at the position immediately before the supervised answer token. All other prompt positions are assigned the ignore index $-100$, so only this answer position contributes to the loss.
@@ -252,15 +252,12 @@ $$
 
 where $r=16$, $\alpha=32$, $A\in\mathbb R^{r\times d_{\text{in}}}$, and $B\in\mathbb R^{d_{\text{out}}\times r}$. Only $A$ and $B$ are optimized; LoRA dropout is $0.05$. The adapted modules are `q_proj`, `k_proj`, `v_proj`, and `o_proj`.
 
-Because the relation is symmetric, training swaps the two objects with probability $1/2$ while preserving the label:
+Because the relation is symmetric, let $S$ denote the swap operation. Training applies it with probability $1/2$ while preserving the label:
 
 $$
-\tilde{x}_i=
-\begin{cases}
-(o_{i2},o_{i1}), & b_i=1,\\
-(o_{i1},o_{i2}), & b_i=0,
-\end{cases}
-\qquad b_i\sim\operatorname{Bernoulli}(0.5),
+S(o_{i1},o_{i2})=(o_{i2},o_{i1}),
+\qquad b_i\sim\mathrm{Bernoulli}\left(\frac{1}{2}\right),
+\qquad \tilde{x}_i=S^{b_i}(x_i),
 \qquad \tilde{y}_i=y_i.
 $$
 
@@ -269,7 +266,7 @@ All three notebooks restrict inference to the four digit tokens, even when train
 $$
 p_i(c)=\frac{\exp(z_{i,t_c})}{\sum_{k=0}^{3}\exp(z_{i,t_k})},
 \qquad
-\hat y_i=\operatorname*{arg\,max}_{c\in\{0,1,2,3\}}p_i(c).
+\hat y_i=\arg\max_{c\in\{0,1,2,3\}}p_i(c).
 $$
 
 The reported competition metric is macro-F1, which weights every class equally:
