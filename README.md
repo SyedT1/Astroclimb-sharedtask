@@ -178,8 +178,11 @@ The following scores were obtained by the completed QLoRA notebooks. They are us
 | [`astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | **0.67856** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | 5,000 balanced pairs (1,250 per class) | 400 pairs | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
 | [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | **0.70751** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
 | [`astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb) | **0.71453** | `Qwen/Qwen3-VL-4B-Instruct` | 2 | 9,200 pairs | 800 balanced pairs (200 per class) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-qwen3vl8b-language-qlora.ipynb`](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb) | **0.73230** | `Qwen/Qwen3-VL-8B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | **0.71202** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | All eligible linear layers in the vision and language towers |
+| [`astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | **0.71016** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention projections plus visual merger projectors |
 
-### Mathematical formulation of the three notebooks
+### Mathematical formulation of the six notebooks
 
 For every object pair $x_i=(o_{i1},o_{i2})$, the one-hot target is converted to a class index
 
@@ -223,6 +226,74 @@ $$
 
 There is no held-out validation set in this final-fit notebook.
 
+#### Qwen3-VL-8B full-10k language-attention notebook
+
+The 8B notebook also uses all 10,000 rows once, without oversampling or a validation holdout. Let $z^{(8\mathrm B)}_{i,v}$ denote the next-token logits from `Qwen3-VL-8B-Instruct`. Its label-only loss retains the original full-vocabulary objective:
+
+$$
+\mathcal L_{\text{8B}}
+=-\frac{1}{10000}\sum_{i=1}^{10000}
+\log\frac{\exp\left(z^{(8\mathrm B)}_{i,t_{y_i}}\right)}
+{\sum_{v\in\mathcal V}\exp\left(z^{(8\mathrm B)}_{i,v}\right)}.
+$$
+
+Thus, the mathematical training objective and class distribution match the 4B full-10k notebook; the principal change is the larger 8B backbone. LoRA remains restricted to the language-attention projections.
+
+#### All-linear vision-and-language notebook
+
+This notebook uses the same 10,000-row class distribution and full-vocabulary label-token objective as the 4B full-10k notebook, without oversampling or a validation holdout. It trains for one epoch at a learning rate of $10^{-4}$ with global batch size 16. Writing its logits as $z^{(\mathrm{AL})}_{i,v}$ gives
+
+$$
+\mathcal L_{\text{all-linear}}
+=-\frac{1}{10000}\sum_{i=1}^{10000}
+\log\frac{\exp\left(z^{(\mathrm{AL})}_{i,t_{y_i}}\right)}
+{\sum_{v\in\mathcal V}\exp\left(z^{(\mathrm{AL})}_{i,v}\right)}.
+$$
+
+Its distinguishing feature is the adapter coverage. If $\mathcal M_{\mathrm{AL}}$ is the set of eligible linear weight matrices across both towers, then
+
+$$
+W_m^{\mathrm{eff}}
+=Q_{\mathrm{NF4}}(W_{m,0})+\frac{\alpha}{r}B_mA_m
+=Q_{\mathrm{NF4}}(W_{m,0})+2B_mA_m,
+\qquad m\in\mathcal M_{\mathrm{AL}}.
+$$
+
+This expands LoRA beyond the four language-attention projections while keeping the quantized base weights frozen.
+
+#### Language-attention plus vision-projector notebook
+
+This configuration also trains on all 10,000 rows for one epoch without oversampling or a validation holdout. It uses learning rate $10^{-4}$, global batch size 16, and the same full-vocabulary label-token loss. If $z^{(\mathrm{LP})}_{i,v}$ denotes its logits, then
+
+$$
+\mathcal L_{\text{language+projector}}
+=-\frac{1}{10000}\sum_{i=1}^{10000}
+\log\frac{\exp\left(z^{(\mathrm{LP})}_{i,t_{y_i}}\right)}
+{\sum_{v\in\mathcal V}\exp\left(z^{(\mathrm{LP})}_{i,v}\right)}.
+$$
+
+Its adapter target set is the union of the language-attention projections and the visual merger projectors:
+
+$$
+\mathcal M_{\mathrm{LP}}
+=\mathcal M_{\mathrm{lang}}
+\cup\mathcal M_{\mathrm{proj}},
+$$
+
+$$
+\mathcal M_{\mathrm{lang}}=\{q_{\mathrm{proj}},k_{\mathrm{proj}},v_{\mathrm{proj}},o_{\mathrm{proj}}\},
+\qquad
+\mathcal M_{\mathrm{proj}}=\{\mathrm{linear\_fc1},\mathrm{linear\_fc2}\}_{\mathrm{merger,deepstack}}.
+$$
+
+For every $m\in\mathcal M_{\mathrm{LP}}$, the learned update is
+
+$$
+W_m^{\mathrm{eff}}
+=Q_{\mathrm{NF4}}(W_{m,0})+\frac{\alpha}{r}B_mA_m
+=Q_{\mathrm{NF4}}(W_{m,0})+2B_mA_m.
+$$
+
 #### Restricted four-class notebook
 
 Holding out 200 examples from each class gives
@@ -231,7 +302,7 @@ $$
 (N_0,N_1,N_2,N_3)=(800,2800,2800,2800),\qquad N=9200,
 $$
 
-and a balanced validation set of $4\times200=800$ examples. Unlike the first two notebooks, its training denominator contains only the four valid label-token logits:
+and a balanced validation set of $4\times200=800$ examples. Unlike the other five notebooks, its training denominator contains only the four valid label-token logits:
 
 $$
 \mathcal L_{\text{restricted}}
@@ -243,14 +314,14 @@ This directly matches the four-way decision made at inference and avoids spendin
 
 #### Shared QLoRA, augmentation, inference, and evaluation
 
-Each notebook keeps the 4-bit NF4 base weights frozen and learns rank-16 LoRA updates on the attention projections. For each adapted matrix,
+Each notebook keeps the 4-bit NF4 base weights frozen and learns rank-16 LoRA updates. For each adapted matrix,
 
 $$
 W_{\text{eff}}=Q_{\text{NF4}}(W_0)+\frac{\alpha}{r}BA
 =Q_{\text{NF4}}(W_0)+2BA,
 $$
 
-where $r=16$, $\alpha=32$, $A\in\mathbb R^{r\times d_{\text{in}}}$, and $B\in\mathbb R^{d_{\text{out}}\times r}$. Only $A$ and $B$ are optimized; LoRA dropout is $0.05$. The adapted modules are `q_proj`, `k_proj`, `v_proj`, and `o_proj`.
+where $r=16$, $\alpha=32$, $A\in\mathbb R^{r\times d_{\text{in}}}$, and $B\in\mathbb R^{d_{\text{out}}\times r}$. Only $A$ and $B$ are optimized; LoRA dropout is $0.05$. Four notebooks adapt only `q_proj`, `k_proj`, `v_proj`, and `o_proj`; the language-projector notebook adds the visual merger projectors, while the all-linear notebook adapts every eligible linear layer in both model towers.
 
 Because the relation is symmetric, let $S$ denote the swap operation. Training applies it with probability $1/2$ while preserving the label:
 
@@ -261,7 +332,7 @@ S(o_{i1},o_{i2})=(o_{i2},o_{i1}),
 \qquad \tilde{y}_i=y_i.
 $$
 
-All three notebooks restrict inference to the four digit tokens, even when training used full-vocabulary cross-entropy:
+All six notebooks restrict inference to the four digit tokens, even when training used full-vocabulary cross-entropy:
 
 $$
 p_i(c)=\frac{\exp(z_{i,t_c})}{\sum_{k=0}^{3}\exp(z_{i,t_k})},
@@ -287,6 +358,9 @@ The base model was loaded using 4-bit NF4 quantization with double quantization 
 | [`astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | Balanced 5,000-example QLoRA experiment with validation. |
 | [`astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | Final training on all 10,000 labeled pairs, full test inference, and submission generation. |
 | [`astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb) | Restricted four-class-loss QLoRA experiment with a balanced 800-example validation split. |
+| [`astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb`](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb) | Qwen3-VL-8B language-attention QLoRA trained on all 10,000 labeled pairs. |
+| [`astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | Qwen3-VL-4B all-linear QLoRA across the vision and language towers, trained on all 10,000 labeled pairs. |
+| [`astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | Qwen3-VL-4B language-attention plus visual-projector QLoRA trained on all 10,000 labeled pairs. |
 
 For the full notebook, these settings request predictions for the entire test set:
 
