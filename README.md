@@ -177,6 +177,108 @@ The following scores were obtained by the completed QLoRA notebooks. They are us
 |---|---:|---|---:|---:|---:|---:|---:|---:|---|
 | [`astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | **0.67856** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | 5,000 balanced pairs (1,250 per class) | 400 pairs | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
 | [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | **0.70751** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb) | **0.71453** | `Qwen/Qwen3-VL-4B-Instruct` | 2 | 9,200 pairs | 800 balanced pairs (200 per class) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+
+### Mathematical formulation of the three notebooks
+
+For every object pair $x_i=(o_{i1},o_{i2})$, the one-hot target is converted to a class index
+
+$$
+y_i=\operatorname*{arg\,max}_{c\in\{0,1,2,3\}}Y_{ic},
+$$
+
+where classes $0,1,2,3$ denote `same_figure`, `same_paper`, `related_papers`, and `unrelated_papers`. Let $t_c$ be the tokenizer ID of the single digit token representing class $c$, and let $z_{i,v}$ be the model logit for vocabulary token $v$ at the position immediately before the supervised answer token. All other prompt positions are assigned the ignore index $-100$, so only this answer position contributes to the loss.
+
+#### 5k balanced notebook
+
+The training sample has equal class quotas,
+
+$$
+(N_0,N_1,N_2,N_3)=(1250,1250,1250,1250),\qquad N=5000.
+$$
+
+Because only 960 unique class-0 training rows remain after reserving validation data, 290 are sampled with replacement. The validation distribution is $(40,120,120,120)$. Training uses the standard causal-language-model cross-entropy over the complete vocabulary $\mathcal V$:
+
+$$
+\mathcal L_{\text{5k}}
+=-\frac{1}{N}\sum_{i=1}^{N}
+\log\frac{\exp(z_{i,t_{y_i}})}{\sum_{v\in\mathcal V}\exp(z_{i,v})}.
+$$
+
+#### Full-10k notebook
+
+This notebook uses every labeled row once, without oversampling, with class counts
+
+$$
+(N_0,N_1,N_2,N_3)=(1000,3000,3000,3000),\qquad N=10000.
+$$
+
+It uses the same full-vocabulary answer-token objective for one epoch:
+
+$$
+\mathcal L_{\text{10k}}
+=-\frac{1}{10000}\sum_{i=1}^{10000}
+\log\frac{\exp(z_{i,t_{y_i}})}{\sum_{v\in\mathcal V}\exp(z_{i,v})}.
+$$
+
+There is no held-out validation set in this final-fit notebook.
+
+#### Restricted four-class notebook
+
+Holding out 200 examples from each class gives
+
+$$
+(N_0,N_1,N_2,N_3)=(800,2800,2800,2800),\qquad N=9200,
+$$
+
+and a balanced validation set of $4\times200=800$ examples. Unlike the first two notebooks, its training denominator contains only the four valid label-token logits:
+
+$$
+\mathcal L_{\text{restricted}}
+=-\frac{1}{N}\sum_{i=1}^{N}
+\log\frac{\exp(z_{i,t_{y_i}})}{\sum_{c=0}^{3}\exp(z_{i,t_c})}.
+$$
+
+This directly matches the four-way decision made at inference and avoids spending probability mass on irrelevant vocabulary tokens.
+
+#### Shared QLoRA, augmentation, inference, and evaluation
+
+Each notebook keeps the 4-bit NF4 base weights frozen and learns rank-16 LoRA updates on the attention projections. For each adapted matrix,
+
+$$
+W_{\text{eff}}=Q_{\text{NF4}}(W_0)+\frac{\alpha}{r}BA
+=Q_{\text{NF4}}(W_0)+2BA,
+$$
+
+where $r=16$, $\alpha=32$, $A\in\mathbb R^{r\times d_{\text{in}}}$, and $B\in\mathbb R^{d_{\text{out}}\times r}$. Only $A$ and $B$ are optimized; LoRA dropout is $0.05$. The adapted modules are `q_proj`, `k_proj`, `v_proj`, and `o_proj`.
+
+Because the relation is symmetric, training swaps the two objects with probability $1/2$ while preserving the label:
+
+$$
+\tilde{x}_i=
+\begin{cases}
+(o_{i2},o_{i1}), & b_i=1,\\
+(o_{i1},o_{i2}), & b_i=0,
+\end{cases}
+\qquad b_i\sim\operatorname{Bernoulli}(0.5),
+\qquad \tilde{y}_i=y_i.
+$$
+
+All three notebooks restrict inference to the four digit tokens, even when training used full-vocabulary cross-entropy:
+
+$$
+p_i(c)=\frac{\exp(z_{i,t_c})}{\sum_{k=0}^{3}\exp(z_{i,t_k})},
+\qquad
+\hat y_i=\operatorname*{arg\,max}_{c\in\{0,1,2,3\}}p_i(c).
+$$
+
+The reported competition metric is macro-F1, which weights every class equally:
+
+$$
+F_{1,c}=\frac{2P_cR_c}{P_c+R_c},
+\qquad
+F_{1,\mathrm{macro}}=\frac{1}{4}\sum_{c=0}^{3}F_{1,c}.
+$$
 
 The base model was loaded using 4-bit NF4 quantization with double quantization and FP16 computation. Only the LoRA adapters were trained; the underlying model weights remained frozen. Training used random object-order swapping and two-process DDP on two NVIDIA T4 GPUs.
 
@@ -187,6 +289,7 @@ The base model was loaded using 4-bit NF4 quantization with double quantization 
 | [`astroclimb_run0_qwen3vl_qlora.ipynb`](astroclimb_run0_qwen3vl_qlora.ipynb) | Small end-to-end QLoRA pipeline check. |
 | [`astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | Balanced 5,000-example QLoRA experiment with validation. |
 | [`astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | Final training on all 10,000 labeled pairs, full test inference, and submission generation. |
+| [`astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb) | Restricted four-class-loss QLoRA experiment with a balanced 800-example validation split. |
 
 For the full notebook, these settings request predictions for the entire test set:
 
