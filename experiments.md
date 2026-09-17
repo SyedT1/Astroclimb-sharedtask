@@ -1,379 +1,248 @@
 # AstroCLIMB Experiments
 
-## Run 0: QLoRA pipeline check
+This file is the experiment ledger and execution queue. Kaggle scores are user-reported macro-F1 values. Model selection for future work must use a fixed validation split rather than repeated leaderboard feedback.
 
-Status: implemented in [`astroclimb_run0_qwen3vl_qlora.ipynb`](astroclimb_run0_qwen3vl_qlora.ipynb).
+## Current result summary
 
-Run 0 is a small prototype of the main language-LoRA baseline. Its purpose is to verify data loading, base64 image decoding, multimodal prompting, label-only loss, QLoRA training, constrained inference, timing, and submission generation before committing a full Kaggle session.
+| Run | Notebook | Model | Training data | Loss | LoRA coverage | Kaggle macro-F1 | Status |
+|---|---|---|---:|---|---|---:|---|
+| Run 0 | [`astroclimb_run0_qwen3vl_qlora.ipynb`](astroclimb_run0_qwen3vl_qlora.ipynb) | Qwen3-VL-4B | 204 rows | Full-vocabulary label-token CE | Language `q/k/v/o` attention, rank 8 | — | Pipeline check completed |
+| E1 | [`astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | Qwen3-VL-4B | 5,000 balanced rows | Full-vocabulary label-token CE | Language `q/k/v/o` attention | 0.67856 | Completed |
+| E2 | [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | Qwen3-VL-4B | 10,000 rows | Full-vocabulary label-token CE | Language `q/k/v/o` attention | 0.70751 | Completed |
+| E3 | [`astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb) | Qwen3-VL-4B | 9,200 train / 800 validation | Restricted four-class CE | Language `q/k/v/o` attention | 0.71453 | Completed |
+| E4 | [`astroclimb-qwen3vl8b-language-qlora.ipynb`](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb) | Qwen3-VL-8B | 10,000 rows | Full-vocabulary label-token CE | Language `q/k/v/o` attention | **0.73230** | Completed; current best |
+| E5 | [`astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | Qwen3-VL-4B | 10,000 rows | Full-vocabulary label-token CE | All eligible vision and language linear layers | 0.71202 | Completed |
+| E6 | [`astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | Qwen3-VL-4B | 10,000 rows | Full-vocabulary label-token CE | Language attention plus visual merger projectors | 0.71016 | Completed |
+| Retired ablation | Notebook removed | Qwen3-VL-4B | Image-containing rows only | Full-vocabulary label-token CE | Visual merger projectors only | 0.48182 | Completed, diagnosed, and retired |
 
-| Setting | Run 0 |
-|---|---:|
-| Model | Qwen3-VL-4B-Instruct |
-| Training examples | 204 |
-| Validation examples | 52 |
-| Vision tower | Frozen |
-| LoRA targets | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-| LoRA rank | 8 |
-| LoRA alpha | 16 |
-| Learning rate | `1e-4` |
-| Training duration | 60 optimizer steps |
-| Image-area budget | `448 × 448` |
-| Object-order augmentation | Random swap with probability 0.5 |
-| GPUs | One T4 intentionally |
+## Conclusions from completed experiments
 
-Run 0 is successful when it completes without errors, the label-only loss decreases, constrained validation works, and a correctly formatted submission file can be produced. Its score is not expected to be competitive.
+- Scaling the language-attention model from 4B to 8B produced the largest observed gain: `0.70751 → 0.73230`.
+- Restricting training loss to the four valid class tokens improved the 4B result: `0.70751 → 0.71453`, although the runs also differ in epoch count and training split.
+- Broad visual adaptation was not competitive with the 8B language-attention run. All-linear and language-plus-projector variants reached `0.71202` and `0.71016`.
+- Vision-projector-only adaptation failed badly at `0.48182`. Caption–caption rows do not traverse those trainable modules, and the resulting predictions strongly overproduced `same_paper`. Do not repeat this configuration.
+- The next experiment should combine the two strongest changes: the 8B backbone and restricted four-class loss.
 
-## Experiment 1: Tiny-set overfit test
-
-Status: planned immediately after Run 0.
-
-Purpose: prove that the label masking, answer-token positions, LoRA gradients, and prediction code are correct before spending hours on full training.
+## Shared implementation that has been validated
 
 ```yaml
-examples: 32
-examples_per_class: 8
-evaluation_set: the same 32 examples
-model: Qwen/Qwen3-VL-4B-Instruct
-vision_tower: frozen
-lora_rank: 8
-lora_alpha: 16
-learning_rate: 2.0e-4
-max_steps: 150-200
+quantization: 4-bit NF4 with double quantization
+compute_dtype: FP16
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
 image_area_budget: 448x448
-random_object_swap: false
-gpu: one T4
+random_object_swap: true
+per_device_batch_size: 1
+gradient_accumulation: 8
+execution: two-process DDP on two T4 GPUs
+inference: four label-token logits only
 ```
 
-Disable random swapping for this diagnostic so every training example is identical across passes. Evaluate the same 32 examples after training.
+The common submission pipeline correctly creates 10,000 unique IDs and one-hot predictions over `same_figure`, `same_paper`, `related_papers`, and `unrelated_papers`.
 
-Success criteria:
+## Validation policy for all new experiments
 
-- Label-only loss falls from approximately random-vocabulary loss toward or below `1.0`.
-- Training macro-F1 reaches at least `0.90`.
-- All four classes can be produced.
-- Repeated inference is deterministic.
-
-If this test fails, inspect label masking, single-token label IDs, LoRA gradients, and the assistant prompt boundary. Do not proceed to full training.
-
-## Experiment 2: Zero-shot versus Run 0
-
-Status: planned after the overfit test.
-
-Purpose: measure whether the 60-step adapter improves over the untouched VLM and establish a baseline score.
-
-Use the same fixed set of 100-200 validation examples for both evaluations:
-
-1. Disable the LoRA adapter and evaluate the base model.
-2. Enable the 60-step Run 0 adapter and evaluate again.
-
-Keep the prompt, resolution, label-token restriction, and object order identical. Record macro-F1, per-class F1, prediction counts, seconds per row, and peak allocated memory. Do not run zero-shot inference over the complete test set.
-
-Decision rule: continue with QLoRA if it improves macro-F1, corrects class collapse, or clearly improves the weakest per-class F1. If both systems emit almost one class exclusively, inspect the digit logits and prompt before scaling.
-
-## Experiment 3: Permanent validation split and preprocessing
-
-Status: required before comparing full experiments.
-
-Purpose: ensure every subsequent score is comparable and prevent exact-object leakage between training and validation.
-
-Build a permanent validation manifest from the complete labeled CSV:
+Use the same permanent split for every controlled comparison:
 
 ```yaml
-validation_rows: approximately 800
-target_rows_per_class: approximately 200
-stratification:
-  - target class
-  - modality pair
-grouping: normalized object hash
+training_rows: 9200
+validation_rows: 800
+validation_examples_per_class: 200
 seed: 42
 ```
 
 Requirements:
 
-- Stream the complete label-sorted CSV; never select a contiguous row interval.
-- Classify modalities as caption-caption, caption-image, or image-image.
-- Hash normalized captions and decoded image bytes.
-- Ensure an exact object does not occur in both training and validation.
-- Save train and validation IDs to versioned manifests.
-- Keep validation at its natural distribution after selection; never oversample validation.
-- Decode and resize each unique training image once, then train from image paths rather than repeatedly decoding base64.
+- Save the exact train and validation IDs.
+- Do not tune class biases, epochs, or ensemble weights from Kaggle scores.
+- Save validation probabilities in addition to hard predictions.
+- Report macro-F1, per-class F1, confusion matrix, modality-level F1, prediction counts, runtime, and peak memory.
+- Treat gains below `0.005` as inconclusive unless they repeat across seeds or folds.
+- Do not run complete test inference until a configuration has been selected on validation.
 
-All later experiments must use this exact split. If the split definition changes, previous scores are no longer directly comparable.
+## N1: Qwen3-VL-8B restricted-loss experiment
 
-## Experiment 4: Main language-LoRA baseline
+Status: **completed**. Attention-only LoRA peaked at validation macro-F1 `0.729164` at checkpoint 863 (1.5 epochs).
 
-Status: planned after Run 0 succeeds.
+Notebook: [`astroclimb-qwen3vl8b-restricted-validation-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_validation_qlora/astroclimb-qwen3vl8b-restricted-validation-qlora.ipynb)
 
-This experiment scales the proven Run 0 method to the complete labeled training set.
+Purpose: combine the best backbone result with the loss that improved the 4B model.
 
 ```yaml
-model: Qwen/Qwen3-VL-4B-Instruct
-training_rows: approximately 9200
-validation_rows: approximately 800
-vision_tower: frozen
-lora_targets:
-  - q_proj
-  - k_proj
-  - v_proj
-  - o_proj
+model: Qwen/Qwen3-VL-8B-Instruct
+training_rows: 9200
+validation_rows: 800
+loss: restricted_four_class_cross_entropy
+epochs: 2
+evaluation_interval: 0.5 epoch
+learning_rate: 5e-5
+lora_targets: [q_proj, k_proj, v_proj, o_proj]
 lora_rank: 16
 lora_alpha: 32
 lora_dropout: 0.05
-learning_rate: 1.0e-4
-epochs: 1
+global_batch_size: 16
 image_area_budget: 448x448
-random_object_swap: true
-same_figure_oversampling: 3x
-precision: FP16
-quantization: 4-bit NF4
-execution: two-process DDP on two T4 GPUs
 ```
 
-The vision tower remains frozen because the selected LoRA targets belong to the language attention layers. The base model is loaded in 4-bit, while the adapters train in FP16.
+Evaluate near 0.5, 1.0, 1.5, and 2.0 epochs and restore the checkpoint with the highest validation macro-F1. Continue only if memory, runtime, and class distributions remain healthy.
 
-The `same_figure` class should be repeated approximately three times in the training manifest so that the effective class counts are close to balanced for macro-F1. The validation set must remain untouched and retain its natural distribution.
+Success criteria:
 
-Use two independent processes with one complete quantized model replica per T4. Do not use notebook `DataParallel`; it combines examples into a larger collator batch and attempts to replicate a device-mapped quantized model. Launch the full training script with Accelerate:
+- Beat the comparable 4B restricted-loss validation result by at least `0.005`.
+- Avoid deterioration in `related_papers` F1.
+- Remain within the Kaggle T4×2 session and memory limits.
 
-```bash
-accelerate launch --multi_gpu --num_processes 2 train.py
-```
+## N2: Constraints, calibration, and symmetry analysis
 
-### Relationship to Run 0
+Status: run after N1; no retraining required.
 
-The current notebook already tests the same core technique, but it is not the full Experiment 4.
+Evaluate on saved validation probabilities:
 
-| Setting | Run 0 notebook | Full Experiment 4 |
-|---|---:|---:|
-| Model | Qwen3-VL-4B | Qwen3-VL-4B |
-| Vision tower | Frozen | Frozen |
-| LoRA targets | `q/k/v/o_proj` | `q/k/v/o_proj` |
-| LoRA rank | 8 | 16 |
-| LoRA alpha | 16 | 32 |
-| Learning rate | `1e-4` | `1e-4` |
-| Image-area budget | 448² | 448² |
-| Random object swapping | Yes | Yes |
-| Training examples | 204 | Approximately 9,200 |
-| Training duration | 60 steps | One complete epoch |
-| GPUs | One T4 | Two T4s with DDP |
-| Class balancing | 64 examples per class | Oversample `same_figure` 3× |
-
-### Evaluation
-
-Record the following on the fixed validation split:
-
-- Macro-F1 and per-class F1
-- Confusion matrix
-- Macro-F1 for caption–caption, caption–image, and image–image pairs
-- Training wall time and seconds per microbatch
-- Inference seconds per row and projected time for 10,000 rows
-- Peak allocated GPU memory
-- Prediction counts for all four classes
-
-Do not perform full 10,000-row test inference until the checkpoint has been selected using validation results.
-
-## Experiment 5: Modality constraint and class calibration
-
-Status: planned after Experiment 4; no retraining required.
-
-Purpose: incorporate a guaranteed task rule and optimize decisions for macro-F1.
-
-The `same_figure` class is valid only for caption-image pairs. Before softmax or argmax, mask it for the other modality combinations:
+1. Raw four-class argmax.
+2. Mask `same_figure` for caption–caption and image–image pairs.
+3. Global additive class biases.
+4. Modality-specific additive class biases.
+5. Forward/reverse probability averaging.
 
 ```python
-if modality in {"caption-caption", "image-image"}:
+if modality in {"CC", "II"}:
     class_logits[0] = float("-inf")
-```
 
-Then tune four additive class biases using only validation probabilities:
-
-```python
 prediction = np.argmax(np.log(probabilities + 1e-12) + class_bias, axis=1)
 ```
 
-Use a small coordinate or grid search to maximize validation macro-F1. Save the chosen biases with the adapter. Compare these variants:
+Use a postprocessing option only if it improves validation macro-F1 by at least `0.005` and remains stable under bootstrap resampling. Use swap TTA only if its gain justifies approximately doubling inference cost.
 
-1. Raw argmax
-2. Modality mask only
-3. Modality mask plus calibrated class biases
+## N3: Full-10K 8B restricted-loss refit
 
-Decision rule: retain every deterministic constraint that improves or preserves macro-F1. Use calibrated biases only if the gain is stable under validation bootstrapping or across folds.
+Status: **notebook locked to the N1 winner; run next**. The selected configuration is attention-only LoRA for 1.5 epochs.
 
-## Experiment 6: Vision LoRA
+Notebook: [`astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_full10k_qlora/astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb)
 
-Status: planned after the language-only baseline.
+Retrain from the original 8B base model on all 10,000 labeled rows using the selected epoch count. Apply only validation-selected postprocessing during test inference.
 
-Purpose: determine whether adapting visual layers improves scientific-figure matching, especially `same_figure` and image-image performance.
+Required artifacts:
 
-```yaml
-model: Qwen/Qwen3-VL-4B-Instruct
-training_split: identical to Experiment 4
-vision_and_language_lora: true
-lora_targets: all-linear
-lora_rank: 8
-lora_alpha: 16
-lora_dropout: 0.05
-learning_rate: 5.0e-5
-epochs: 1
-image_area_budget: 448x448
-same_figure_oversampling: 3x
-random_object_swap: true
-execution: two-process DDP on two T4 GPUs
-```
+- adapter and processor;
+- exact training configuration and metrics;
+- raw probability shards;
+- merged probability file;
+- validated 10,000-row submission.
 
-Start from the base model for a clean comparison unless a continuation run is explicitly recorded as such. Compare against Experiment 4 using the identical validation split and inference constraints.
+The leaderboard target is to improve on the current best score of `0.73230`.
 
-Decision rule: keep vision LoRA only if overall macro-F1 improves by at least `0.01`, or if a meaningful `same_figure`/image-image improvement occurs without substantially damaging the other classes. Record its effect on memory and seconds per microbatch.
+## N4: Restricted-loss language-MLP expansion
 
-## Experiment 7: Image-resolution ablation
+Status: **completed**. Attention + MLP peaked at `0.729019` after 2.0 epochs, only `0.000145` below attention-only while using more memory and time; it was not selected.
 
-Status: planned using the better adapter strategy from Experiments 4 and 6.
+Notebook: [`astroclimb-qwen3vl8b-restricted-language-mlp-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_language_mlp_qlora/astroclimb-qwen3vl8b-restricted-language-mlp-qlora.ipynb)
 
-Purpose: test whether small plot labels, legends, panel annotations, and astronomical identifiers benefit from additional vision tokens.
-
-| Modality | Baseline budget | Higher-resolution budget |
-|---|---:|---:|
-| Caption-image | 448² total pixels | 768² total pixels |
-| Image-image | 448² per image | 512² per image |
-| Caption-caption | No image | No image |
-
-Keep every other training setting fixed. First benchmark the higher resolution on 200-400 validation examples to measure memory and inference cost. If it fits, train the corresponding adapter for one epoch.
-
-Decision rule: retain higher resolution if its macro-F1 gain justifies the measured runtime. Prefer the 4B model at useful resolution over moving prematurely to an 8B model with unreadably small figures.
-
-If an out-of-memory error occurs, reduce two-image resolution first, then maximum text length. LoRA rank should be reduced only after activation-heavy settings have been adjusted.
-
-## Experiment 8: Symmetry test-time augmentation
-
-Status: planned after selecting the best trained adapter.
-
-Purpose: enforce the task's symmetric relation at inference time.
-
-Evaluate each validation pair in both orders and average probabilities:
+Test whether additional language capacity helps distinguish `same_paper`, `related_papers`, and `unrelated_papers`:
 
 ```python
-p_forward = predict(obj_1, obj_2)
-p_reverse = predict(obj_2, obj_1)
-p_final = 0.5 * (p_forward + p_reverse)
+target_modules = [
+    "q_proj", "k_proj", "v_proj", "o_proj",
+    "gate_proj", "up_proj", "down_proj",
+]
 ```
 
-Record forward-only macro-F1, averaged macro-F1, the fraction of pairs whose predicted class changes when reversed, and the exact runtime multiplier.
+Use the fixed 9,200/800 split, restricted loss, rank 16, alpha 32, dropout 0.05, and the same two-epoch half-epoch checkpoint schedule as N1. Compare against attention-only LoRA with every other setting fixed. Do not prioritize more visual-only adapter experiments.
 
-Decision rule: use symmetry TTA for the full test set only if validation macro-F1 improves by at least `0.005` or it fixes a clear instability. It approximately doubles inference time, so a negligible gain is not worthwhile.
+## N5: Probability ensemble
 
-## Experiment 9: Citation-focused auxiliary training
+Status: final-stage experiment.
 
-Status: conditional; run only if `related_papers` and `unrelated_papers` remain the main confusion.
+Candidate members:
 
-Purpose: teach the language model citation-related similarity using the public Hugging Face metadata without first downloading every image.
+- current 8B full-vocabulary model (`0.73230`);
+- N1/N3 8B restricted-loss model;
+- 4B restricted-loss model (`0.71453`) only if its validation errors are complementary.
 
-Generate an auxiliary caption-caption dataset:
+Test validation-selected weights such as `0.25/0.75`, `0.50/0.50`, and `0.75/0.25`. Average probabilities before applying the modality mask and calibrated biases. Hard one-hot submissions cannot be used as a proper probability ensemble.
 
-```yaml
-related_pairs: 25000
-hard_unrelated_pairs: 25000
-source: AstroCLIMB DOI and citation graph
-hard_negative_rule: topically similar papers with no citation edge
-stage_1_epochs: 1
-stage_2: fine-tune on the Kaggle multimodal training split
-```
+## N6: Citation-focused auxiliary training
 
-Random unrelated papers are likely too easy. Construct hard unrelated examples using caption/title embedding similarity while confirming that the papers have different DOIs and no citation edge. Keep all validation papers out of auxiliary training when their DOI mapping is available.
+Status: conditional on `related_papers` remaining the weakest class.
 
-Compare:
+Generate caption pairs from the public DOI citation graph:
 
-1. Experiment 4 without auxiliary training
-2. Auxiliary related versus hard-unrelated training, followed by Experiment 4 fine-tuning
+| Pair type | Rows |
+|---|---:|
+| Same paper | 20,000 |
+| Related papers | 30,000 |
+| Random unrelated papers | 15,000 |
+| Hard unrelated papers | 15,000 |
+| **Total** | **80,000** |
 
-Decision rule: retain this stage if it improves `related_papers` F1 and overall macro-F1 without turning semantically similar unrelated examples into excessive false positives.
+Use one auxiliary epoch followed by one restricted-loss epoch on the Kaggle multimodal split. Keep validation papers out of auxiliary training wherever DOI mapping is available. Retain this stage only if it improves both overall macro-F1 and `related_papers` F1.
 
-## Experiment 10: Checkpoint ensemble and final test inference
+## Lower-priority experiments
 
-Status: final stage only.
+- Higher image resolution, after an inference-only memory and speed benchmark.
+- Longer caption context.
+- Rank 8/16/32 and dropout 0/0.05/0.10 ablations.
+- Multi-seed probability ensembles.
 
-Purpose: produce the competition submission from configurations already selected on validation.
+These are lower priority because model scale and class-restricted loss have stronger evidence than vision expansion or small adapter changes.
 
-Candidate ensemble members should be meaningfully different, such as the best language-only adapter and the best vision-LoRA or higher-resolution adapter. Do not ensemble weak checkpoints merely because they exist.
-
-Average saved class probabilities, apply the modality constraint and selected class biases, then produce exactly one one-hot class per row. Test a small grid of ensemble weights on validation, for example `0.25/0.75`, `0.5/0.5`, and `0.75/0.25`.
-
-Run final test inference as two independent shards:
-
-- GPU/process 0 handles one 5,000-row shard.
-- GPU/process 1 handles the other 5,000-row shard.
-- Each process loads one complete 4-bit model and adapter.
-- Merge shards by `id` and validate all 10,000 IDs exactly once.
-
-Final submission checks:
-
-- Columns are exactly `id`, `same_figure`, `same_paper`, `related_papers`, and `unrelated_papers`.
-- IDs are unique and cover every test row.
-- Every prediction value is `0` or `1`.
-- Every row sums to exactly one.
-- There are no missing values.
-- Probability files and the exact adapter/configuration are saved for reproducibility.
-
-## Execution order and stopping rules
-
-Run experiments in this order:
+## Execution order
 
 ```text
-Run 0 pipeline and timing check
-→ Experiment 1 tiny-set overfit
-→ Experiment 2 zero-shot comparison
-→ Experiment 3 permanent validation/preprocessing
-→ Experiment 4 full language-LoRA baseline
-→ Experiment 5 constraints and calibration
-→ Experiment 6 vision LoRA
-→ Experiment 7 resolution ablation
-→ Experiment 8 symmetry TTA
-→ Experiment 9 auxiliary citation training, only if needed
-→ Experiment 10 ensemble and final inference
+N1: 8B restricted loss on 9,200/800
+  → N2: modality mask, calibration, and symmetry analysis
+  → N3: selected 8B configuration refit on all 10K
+  → submit and compare with 0.73230
+  → N4: language attention + MLP restricted-loss ablation
+  → N5: probability ensemble
+  → N6: auxiliary citation training only if related_papers remains weak
 ```
-
-General stopping rules:
-
-- Do not scale training until the tiny-set overfit test passes.
-- Do not compare models on different validation splits.
-- Do not run full test inference for exploratory checkpoints.
-- Treat a macro-F1 change smaller than `0.005` as noise unless repeated across folds or seeds.
-- Prefer changes of at least `0.01` before accepting a substantial runtime penalty.
-- Stop a run early if it predicts almost one class exclusively and validation does not recover.
-- Keep `USE_SWAP_TTA=False` until Experiment 8 demonstrates that its doubled cost is justified.
 
 ## Experiment log template
 
-Record one row per run in a CSV or spreadsheet with these fields:
+Record one row per run:
 
 ```text
 run_id
 date
-data_manifest_version
-validation_split_version
-seed
+notebook
 model
-lora_targets
+train_manifest
+validation_manifest
+seed
+loss_type
+epochs_or_steps
+learning_rate
 lora_rank
 lora_alpha
-learning_rate
-epochs_or_steps
-image_budget_caption_image
-image_budget_image_image
-class_balancing
+lora_dropout
+lora_targets
+image_budget
 random_swap
+modality_mask
+class_biases
+swap_tta
 gpu_count
 training_minutes
-seconds_per_microbatch
+inference_seconds_per_row
 peak_gpu_gib
-validation_seconds_per_row
-macro_f1
+validation_macro_f1
 f1_same_figure
 f1_same_paper
 f1_related_papers
 f1_unrelated_papers
-macro_f1_caption_caption
-macro_f1_caption_image
-macro_f1_image_image
 prediction_counts
+kaggle_macro_f1
 notes
 ```
+
+## Submission checks
+
+Before every upload, verify:
+
+- exactly 10,000 rows;
+- IDs are unique and match the test set;
+- columns are exactly `id`, `same_figure`, `same_paper`, `related_papers`, and `unrelated_papers`;
+- every target value is `0` or `1`;
+- every row sums to exactly one;
+- there are no missing values or saved DataFrame index columns.

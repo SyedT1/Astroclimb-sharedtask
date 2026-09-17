@@ -2,79 +2,102 @@
 
 ## Objective
 
-Improve the current best Kaggle macro-F1 of **0.70751** under the Kaggle **T4×2** compute constraint, while keeping model selection independent of hidden test labels.
+Improve the current best user-reported Kaggle macro-F1 of **0.73230** under the Kaggle **T4×2** constraint. Future model and inference choices must be selected on a fixed validation set, independently of hidden test labels and leaderboard feedback.
 
-The main technical target is better discrimination among:
+The main error-reduction target remains discrimination among:
 
 - `same_paper`;
 - `related_papers`;
 - `unrelated_papers`.
 
-The existing 5K validation run already obtained approximately `0.918` F1 for `same_figure`, so experiments that primarily improve visual figure–caption matching have lower priority.
+The evidence now favors language-side capacity and a four-class-aligned objective over broader visual adaptation.
 
-## Current baselines
+## Completed work
 
-| Run | Model | Training data | Epochs | Loss | Kaggle macro-F1 |
-|---|---|---:|---:|---|---:|
-| 5K QLoRA | Qwen3-VL-4B-Instruct | 5,000 balanced pairs | 1 | Full-vocabulary label-token CE | 0.67856 |
-| Full-10K QLoRA | Qwen3-VL-4B-Instruct | 10,000 pairs | 1 | Full-vocabulary label-token CE | **0.70751** |
+### Scoreboard
 
-Common baseline configuration:
+| Run | Model | Rows | Epochs | Loss | Adapter targets | Kaggle macro-F1 |
+|---|---|---:|---:|---|---|---:|
+| Balanced 5K | Qwen3-VL-4B | 5,000 | 1 | Full-vocabulary CE | Language attention | 0.67856 |
+| Full 10K baseline | Qwen3-VL-4B | 10,000 | 1 | Full-vocabulary CE | Language attention | 0.70751 |
+| Language + projector | Qwen3-VL-4B | 10,000 | 1 | Full-vocabulary CE | Language attention + visual merger | 0.71016 |
+| All-linear | Qwen3-VL-4B | 10,000 | 1 | Full-vocabulary CE | Vision and language linear layers | 0.71202 |
+| Restricted four-class | Qwen3-VL-4B | 9,200 + 800 validation | 2 | Restricted four-class CE | Language attention | 0.71453 |
+| 8B language attention | Qwen3-VL-8B | 10,000 | 1 | Full-vocabulary CE | Language attention | **0.73230** |
+| Retired vision-only ablation | Qwen3-VL-4B | Image-containing rows | 1 | Full-vocabulary CE | Visual merger only | 0.48182 |
+
+### Implemented notebooks
+
+- [`astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb)
+- [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb)
+- [`astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb)
+- [`astroclimb-qwen3vl8b-language-qlora.ipynb`](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb)
+- [`astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb)
+- [`astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb)
+
+The vision-projector-only notebook was removed after its `0.48182` result showed that visual merger adaptation alone cannot learn the caption-heavy paper relationships.
+
+## Evidence and decisions
+
+### 1. Model scale is the strongest demonstrated lever
+
+Moving from the 4B full-10K language-attention model to the analogous 8B model improved macro-F1 by `0.02479`. This is larger than any observed adapter-coverage change.
+
+Decision: use Qwen3-VL-8B as the primary backbone for the next controlled experiment.
+
+### 2. Restricted loss is promising
+
+The 4B restricted-loss run scored `0.71453`, an improvement of `0.00702` over the 4B full-10K baseline despite withholding 800 rows from training. The comparison is not perfectly controlled because epoch count and split also differ, but it is strong enough to test on 8B.
+
+Decision: restricted four-class cross-entropy is the next objective.
+
+### 3. Vision expansion has low priority
+
+The language-plus-projector and all-linear variants improved on the 4B baseline by only `0.00265` and `0.00451`, respectively. The projector-only experiment collapsed to `0.48182`.
+
+Decision: freeze vision modules for the primary 8B run. Do not repeat projector-only adaptation. Consider visual changes only after the 8B restricted-loss path is exhausted.
+
+### 4. Controlled validation is mandatory
+
+Several completed leaderboard runs used all 10,000 labeled rows and therefore provide no local checkpoint-selection signal. Leaderboard scores must be treated as final measurements, not tuning data.
+
+Decision: all new comparisons begin on the same 9,200/800 split and save raw validation probabilities.
+
+## Fixed validation and reporting policy
 
 ```yaml
-quantization: 4-bit NF4 with double quantization
-compute_dtype: FP16
-lora_rank: 16
-lora_alpha: 32
-lora_dropout: 0.05
-lora_targets: [q_proj, k_proj, v_proj, o_proj]
-image_area_budget: 448x448
-random_object_swap: true
-execution: two-process DDP on two T4 GPUs
-```
-
-## Data and validation policy
-
-Use one permanent split for every model comparison:
-
-```yaml
+seed: 42
 training_rows: 9200
 validation_rows: 800
 validation_examples_per_class: 200
-seed: 42
+validation_oversampling: false
 ```
 
-Requirements:
+For every new run, record:
 
-- Never tune against `data/solution.csv` or hidden test labels.
-- Never select class biases from Kaggle leaderboard feedback.
-- Use the same validation IDs for every controlled comparison.
-- Cache decoded images by hash and reuse the same manifests.
-- Save validation probabilities, not only hard predictions.
-- Report macro-F1, per-class F1, confusion matrix, modality-level F1, prediction counts, runtime, and peak memory.
-- Treat improvements below `0.005` as inconclusive unless repeated across seeds.
+- overall and per-class macro-F1;
+- confusion matrix;
+- macro-F1 for caption–caption, caption–image, and image–image subsets;
+- class prediction counts;
+- validation probabilities and row IDs;
+- training and inference wall time;
+- seconds per optimizer step and inference row;
+- peak allocated memory per GPU;
+- exact resolved LoRA module names.
 
-## Experiment R1: restricted four-class loss
+Use the same validation IDs for every comparison. Treat improvements smaller than `0.005` as inconclusive unless repeated across seeds or bootstrap samples.
 
-Status: **notebook implemented; run next**.
+## Priority 1: 8B restricted four-class loss
 
-Notebook: [`astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb)
+Status: **completed**. The best checkpoint was 863 at 1.5 epochs with validation macro-F1 `0.729164`.
 
-Replace full-vocabulary causal-language-model loss with cross-entropy over only the four valid digit-token logits:
-
-```python
-outputs = model(**model_inputs)
-next_token_logits = outputs.logits[:, answer_position - 1]
-class_logits = next_token_logits[:, label_token_ids]
-loss = torch.nn.functional.cross_entropy(class_logits, target_class)
-```
-
-Configuration:
+Notebook: [`astroclimb-qwen3vl8b-restricted-validation-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_validation_qlora/astroclimb-qwen3vl8b-restricted-validation-qlora.ipynb)
 
 ```yaml
-model: Qwen/Qwen3-VL-4B-Instruct
+model: Qwen/Qwen3-VL-8B-Instruct
 training_rows: 9200
 validation_rows: 800
+loss: restricted_four_class_cross_entropy
 epochs: 2
 learning_rate: 5e-5
 lora_rank: 16
@@ -82,218 +105,139 @@ lora_alpha: 32
 lora_dropout: 0.05
 lora_targets: [q_proj, k_proj, v_proj, o_proj]
 image_area_budget: 448x448
+max_text_chars: 3000
 global_batch_size: 16
+precision: FP16
+quantization: 4-bit NF4 with double quantization
+random_object_swap: true
+execution: two-process DDP on two T4 GPUs
 ```
 
-Evaluate and save at these optimizer steps:
-
-| Step | Approximate epoch |
-|---:|---:|
-| 288 | 0.5 |
-| 575 | 1.0 |
-| 863 | 1.5 |
-| 1,150 | 2.0 |
-
-Select the checkpoint with the highest validation macro-F1.
-
-Decision rule:
-
-- Continue to a full-data refit if the best restricted-loss checkpoint clearly improves the comparable validation result.
-- Stop or revise the loss if class predictions collapse or `related_papers` F1 deteriorates.
-
-## Experiment R1A: LoRA configuration ablations
-
-Status: planned after R1 confirms that restricted four-class loss trains correctly.
-
-LoRA configuration should be ablated on the identical 9,200/800 split, but it has lower priority than validating the new loss. Change only one factor at a time and initially train each candidate for one epoch. Continue only the winning configuration to the full two-epoch checkpoint search.
-
-### Rank and alpha ablation
-
-Keep `lora_alpha = 2 × rank` so adapter scaling remains comparable:
-
-| Run | LoRA rank | LoRA alpha | Dropout | Target modules |
-|---|---:|---:|---:|---|
-| L1 | 8 | 16 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-| L2 | **16** | **32** | **0.05** | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-| L3 | 32 | 64 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-
-Interpretation:
-
-- Rank 8 may regularize better with only 9,200 supervised pairs and will be cheaper.
-- Rank 16 is the established baseline.
-- Rank 32 provides more capacity but may overfit or offer too little gain for its cost.
-
-Select the rank using validation macro-F1, not training loss.
-
-### Target-module ablation
-
-After choosing the rank, compare:
-
-| Run | Target modules | Purpose |
-|---|---|---|
-| T1 | `q_proj`, `v_proj` | Small, strongly regularized attention adapter |
-| T2 | `q_proj`, `k_proj`, `v_proj`, `o_proj` | Current attention-only baseline |
-| T3 | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` | Adapt language attention and MLP transformations |
-| T4 | All linear layers | Maximum adaptation, potentially including visual modules |
-
-The highest-priority target expansion is:
+The training loss must normalize over only the digit-token logits:
 
 ```python
-target_modules = [
-    "q_proj",
-    "k_proj",
-    "v_proj",
-    "o_proj",
-    "gate_proj",
-    "up_proj",
-    "down_proj",
-]
+outputs = model(**model_inputs)
+next_token_logits = outputs.logits[batch_indices, answer_positions - 1]
+class_logits = next_token_logits.index_select(-1, label_token_ids)
+loss = torch.nn.functional.cross_entropy(class_logits.float(), target_class)
 ```
 
-This may help the semantic distinction between `related_papers` and `unrelated_papers`, but it will train more parameters than attention-only LoRA.
+Evaluate and save checkpoints at approximately 0.5, 1.0, 1.5, and 2.0 epochs. Restore the checkpoint with the highest validation macro-F1.
 
-Treat `all-linear` as a separate vision-and-language adaptation experiment. Record exactly which modules PEFT matches; do not assume that every matched module belongs to the language model.
+### Acceptance criteria
 
-### Dropout ablation
+- At least `0.005` validation macro-F1 above the comparable 4B restricted model.
+- No collapse in `related_papers` or `unrelated_papers` recall.
+- Peak memory remains safe on both T4 GPUs.
+- Projected training and inference fit inside Kaggle session limits.
 
-Test dropout only after rank and target modules have been selected:
+If the 8B run cannot fit, reduce image area before reducing LoRA rank.
 
-| Run | LoRA dropout | Motivation |
-|---|---:|---|
-| D1 | 0.00 | Maximum fitting capacity |
-| D2 | **0.05** | Current baseline |
-| D3 | 0.10 | Stronger regularization if later checkpoints overfit |
+## Priority 2: inference constraints and calibration
 
-Use the checkpoint trajectory to interpret dropout:
+Use the saved probabilities from Priority 1. No retraining is required.
 
-- If validation continues improving through two epochs, prefer `0.00` or `0.05`.
-- If training loss improves while validation macro-F1 declines, test `0.10`.
+### Modality mask
 
-### Compact LoRA sweep
-
-To control GPU time, run only this compact sequence:
-
-| Run | Rank/alpha | Targets | Dropout | Initial epochs |
-|---|---|---|---:|---:|
-| A | 8/16 | `q/k/v/o_proj` | 0.05 | 1 |
-| B | 16/32 | `q/k/v/o_proj` | 0.05 | 1 |
-| C | 32/64 | `q/k/v/o_proj` | 0.05 | 1 |
-| D | Best rank/alpha | `q/k/v/o_proj + gate/up/down_proj` | 0.05 | 1 |
-| E | Best rank/alpha | All linear layers | 0.05 | 1 |
-
-After selecting the best rank and targets, test dropout only if the validation trajectory shows a reason to do so. Train the final winning LoRA configuration for two epochs with the same half-epoch checkpoint schedule as R1.
-
-### LoRA selection criteria
-
-Rank candidates in this order:
-
-1. Validation macro-F1
-2. `related_papers` F1
-3. Mean macro-F1 across caption–caption, caption–image, and image–image subsets
-4. Stability across the half-epoch checkpoints
-5. Peak GPU memory and training time
-
-Decision rules:
-
-- Require at least `0.005` macro-F1 improvement to replace the current LoRA configuration.
-- Prefer the smaller adapter when scores differ by less than `0.005`.
-- Stop a candidate if predictions collapse or the projected runtime threatens the Kaggle limit.
-- Do not change rank, alpha, targets, learning rate, and dropout simultaneously.
-- Do not promote a configuration based only on lower training loss.
-
-## Experiment R2: modality constraints and calibration
-
-Status: planned immediately after R1; no retraining required.
-
-Evaluate these variants using R1 validation probabilities:
-
-1. Raw four-class argmax
-2. Modality mask only
-3. Global additive class biases
-4. Modality-specific class biases
-5. Modality mask plus modality-specific biases
-
-Apply the guaranteed structural rule:
+The `same_figure` class is impossible for caption–caption and image–image pairs:
 
 ```python
 if modality in {"CC", "II"}:
     class_logits[0] = float("-inf")
 ```
 
-Tune biases only on validation predictions:
+Compare raw argmax against mask-only predictions.
+
+### Class calibration
+
+Tune additive biases only on validation:
 
 ```python
 prediction = np.argmax(np.log(probabilities + 1e-12) + class_bias, axis=1)
 ```
 
-Decision rule: retain a deterministic postprocessing variant if it improves validation macro-F1 by at least `0.005` and does not produce an implausible class distribution.
+Compare:
 
-## Experiment R3: full-10K restricted-loss refit
+1. no bias;
+2. global class biases;
+3. modality-specific class biases;
+4. modality mask plus modality-specific biases.
 
-Status: run after selecting the R1 checkpoint and R2 postprocessing.
+Retain calibration only if its gain is at least `0.005` and stable under validation bootstrapping.
 
-Retrain from the original base model on all 10,000 labeled pairs using the selected epoch count.
+### Symmetry TTA
 
-Example when R1 selects 1.5 epochs:
+```python
+p_final = 0.5 * (
+    predict(obj_1, obj_2) +
+    predict(obj_2, obj_1)
+)
+```
+
+Measure prediction disagreement between object orders. Use TTA for the complete test set only if it adds at least `0.005`, because it approximately doubles inference time.
+
+## Priority 3: full-10K restricted-loss refit
+
+Status: **notebook updated with the selected attention-only configuration and 1.5-epoch duration; run next**.
+
+Notebook: [`astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_full10k_qlora/astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb)
+
+After choosing the best checkpoint duration and inference rules, retrain from the original 8B base model on all 10,000 labeled rows.
 
 ```yaml
-model: Qwen/Qwen3-VL-4B-Instruct
+model: Qwen/Qwen3-VL-8B-Instruct
 training_rows: 10000
-epochs: 1.5
+epochs: validation_selected
 loss: restricted_four_class_cross_entropy
 learning_rate: 5e-5
 lora_rank: 16
 lora_alpha: 32
 lora_dropout: 0.05
+lora_targets: [q_proj, k_proj, v_proj, o_proj]
 ```
 
-Run inference on all 10,000 test rows, apply only the R2 settings chosen on validation, and compare the Kaggle score against `0.70751`.
+Run sharded test inference, save raw probabilities, apply only validation-selected postprocessing, and compare the final score against `0.73230`.
 
-Required artifacts:
+## Priority 4: language MLP target expansion
 
-- final adapter;
-- training configuration and metrics;
-- raw probability shards;
-- merged probability file;
-- validated 10,000-row `submission.csv`.
+Status: **completed and not selected**. Its best macro-F1 was `0.729019` at 2.0 epochs versus `0.729164` for attention-only at 1.5 epochs. The `0.000145` difference is far below the `0.005` threshold, while MLP adaptation used more memory and training time.
 
-## Experiment R4: Qwen3-VL-8B pilot
+Notebook: [`astroclimb-qwen3vl8b-restricted-language-mlp-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_language_mlp_qlora/astroclimb-qwen3vl8b-restricted-language-mlp-qlora.ipynb)
 
-Status: conditional on finishing R1–R3.
+If restricted 8B training succeeds, test whether language MLP adaptation improves paper-level semantics.
 
-Start with a small feasibility run:
+| Variant | Target modules |
+|---|---|
+| Attention baseline | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| Attention + MLP | `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` |
 
-```yaml
-model: Qwen/Qwen3-VL-8B-Instruct
-training_rows: 2000
-max_optimizer_steps: 200
-loss: restricted_four_class_cross_entropy
-quantization: 4-bit NF4
-lora_rank: 16
-lora_alpha: 32
-learning_rate: 5e-5
-image_area_budget: 448x448
-per_device_batch_size: 1
-gradient_accumulation: 8
-gpus: 2x T4
+Use the same two-epoch half-epoch checkpoint schedule on the fixed split. Keep rank, alpha, dropout, learning rate, and loss unchanged. Promote the expanded target set only for a validation gain of at least `0.005`.
+
+Do not combine this ablation with a rank or dropout change; otherwise the source of any gain will be ambiguous.
+
+## Priority 5: probability ensemble
+
+Use only models with complementary validation errors. Primary candidates are:
+
+- 8B full-vocabulary language-attention model (`0.73230`);
+- new 8B restricted-loss model;
+- 4B restricted-loss model (`0.71453`) if it contributes complementary errors.
+
+Test weights:
+
+```text
+0.25 / 0.75
+0.50 / 0.50
+0.75 / 0.25
 ```
 
-Continue to the complete 9,200/800 experiment only if:
+Average probabilities first, then apply the selected modality mask and biases. Save component probabilities and ensemble weights. Do not ensemble hard one-hot CSVs.
 
-- peak allocated memory remains below approximately 14 GiB per GPU;
-- image–image examples do not cause OOM failures;
-- the projected run fits within the Kaggle session limit;
-- early validation is meaningfully better than the 4B result.
+## Priority 6: citation-focused auxiliary QLoRA
 
-If memory is insufficient, reduce image area before reducing LoRA rank.
+Run only if `related_papers` remains the weakest class after the 8B restricted-loss experiment.
 
-## Experiment R5: citation-focused auxiliary QLoRA
-
-Status: planned if `related_papers` remains the weakest class.
-
-Metadata retrieval cannot resolve the current Kaggle test objects, so DOI metadata must not be used as a test-time override. Use the public Hugging Face graph only to generate supervised training examples.
-
-Initial caption-focused auxiliary set:
+Generate caption-focused pairs from public DOI metadata and citation edges:
 
 | Pair type | Rows |
 |---|---:|
@@ -303,13 +247,11 @@ Initial caption-focused auxiliary set:
 | Hard unrelated papers | 15,000 |
 | **Total** | **80,000** |
 
-Hard unrelated examples should contain topically similar captions from papers with different DOIs and no citation edge.
-
-Two-stage training:
+Hard negatives should be topically similar papers with different DOIs and no citation edge. Use public metadata only to generate training examples; do not use it as a test-time override.
 
 ```yaml
 stage_1:
-  data: 80000 generated caption pairs
+  data: 80000 auxiliary caption pairs
   epochs: 1
   learning_rate: 5e-5
 stage_2:
@@ -319,116 +261,58 @@ stage_2:
 loss: restricted_four_class_cross_entropy
 ```
 
-Decision rule: keep auxiliary training only if it improves both overall macro-F1 and `related_papers` F1 on the permanent validation set.
+Keep this stage only if it improves both overall macro-F1 and `related_papers` F1.
 
-## Experiment R6: probability ensemble
+## Deferred ablations
 
-Status: final-stage experiment.
+Run these only after the priorities above:
 
-Candidate members:
+### Rank and alpha
 
-- existing full-10K 4B QLoRA (`0.70751`);
-- best restricted-loss 4B adapter;
-- restricted-loss 8B adapter or auxiliary-trained adapter.
+| Rank | Alpha |
+|---:|---:|
+| 8 | 16 |
+| 16 | 32 |
+| 32 | 64 |
 
-Test simple validation-selected weights:
+### Dropout
 
-```text
-0.25 / 0.75
-0.50 / 0.50
-0.75 / 0.25
-```
+Test `0.00`, `0.05`, and `0.10` only if checkpoint trajectories indicate underfitting or overfitting.
 
-Use only models with complementary validation errors. Apply the selected modality mask and calibration after probability averaging.
+### Image and text budgets
 
-## Experiment R7: symmetry test-time augmentation
+- Benchmark higher image resolution on 200–400 validation examples before training.
+- Increase caption context only after measuring truncation frequency.
+- Prefer reducing two-image resolution first if 8B memory is tight.
 
-Status: optional final inference enhancement.
-
-```python
-p_forward = predict(obj_1, obj_2)
-p_reverse = predict(obj_2, obj_1)
-p_final = 0.5 * (p_forward + p_reverse)
-```
-
-Decision rule: use symmetry TTA on the complete test set only if validation macro-F1 improves by at least `0.005`, because it approximately doubles inference time.
-
-## Lower-priority experiments
-
-Run these only after the preceding experiments:
-
-- Higher figure resolution
-- Multi-seed ensembles
-- Longer caption context
-
-These are lower priority because they are more likely to provide incremental gains, while the current error profile is dominated by paper-level semantic relationships rather than `same_figure` recognition.
-
-## Execution order
+## Updated execution order
 
 ```text
-R1: restricted loss on 9,200/800
-  → R1A: compact LoRA rank and target-module ablation
-  → R2: modality mask and validation calibration
-  → R3: selected configuration refit on all 10K
-  → submit and compare with 0.70751
-  → R4: 8B feasibility pilot and full run if viable
-  → R5: auxiliary citation training if related_papers remains weak
-  → R6: probability ensemble
-  → R7: symmetry TTA if its validation gain justifies the cost
+P1: 8B restricted loss on fixed 9,200/800 split
+  → P2: modality mask, class calibration, and symmetry TTA analysis
+  → P3: selected 8B restricted configuration refit on all 10K
+  → submit and compare with 0.73230
+  → P4: language attention + MLP restricted-loss ablation
+  → P5: probability ensemble
+  → P6: citation-focused auxiliary training if related_papers remains weak
+  → deferred rank, dropout, resolution, context, and multi-seed ablations
 ```
-
-## Experiment log
-
-Record one row per run:
-
-```text
-run_id
-date
-notebook
-model
-train_manifest
-validation_manifest
-seed
-loss_type
-epochs_or_steps
-learning_rate
-lora_rank
-lora_alpha
-lora_dropout
-lora_targets
-image_budget
-random_swap
-modality_mask
-class_biases
-gpu_count
-training_minutes
-inference_seconds_per_row
-peak_gpu_gib
-validation_macro_f1
-f1_same_figure
-f1_same_paper
-f1_related_papers
-f1_unrelated_papers
-prediction_counts
-kaggle_macro_f1
-notes
-```
-
-## Submission checks
-
-Before every Kaggle upload, verify:
-
-- exactly 10,000 prediction rows;
-- IDs are unique and match the test set;
-- columns are exactly `id`, `same_figure`, `same_paper`, `related_papers`, and `unrelated_papers`;
-- every class value is `0` or `1`;
-- every row sums to exactly one;
-- there are no missing values or saved DataFrame index columns.
 
 ## Stop conditions
 
 - Stop any run that collapses to one or two predicted classes.
-- Do not promote a costly change for a validation improvement below `0.005`.
-- Do not run full-test inference for an unselected checkpoint.
-- Stop optional work early enough to preserve time for the final 10K refit and submission.
-- Do not resume direct metadata lookup as a test-time classifier unless an official dataset release materially changes test-object coverage.
+- Do not select checkpoints or biases from Kaggle feedback.
+- Do not run full test inference for an unselected exploratory checkpoint.
+- Do not accept substantial runtime cost for a validation gain below `0.005`.
+- Prefer the smaller or simpler configuration when scores differ by less than `0.005`.
+- Preserve enough compute time for the final full-10K refit and inference.
+
+## Required final artifacts
+
+- selected adapter and processor;
+- exact configuration and resolved target-module list;
+- training and validation metrics;
+- validation and test probability files;
+- sharded inference outputs;
+- merged, validated submission;
+- experiment-log entry with score, timing, memory, and notes.
