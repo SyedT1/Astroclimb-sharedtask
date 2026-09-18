@@ -1,0 +1,294 @@
+\documentclass[11pt]{article}
+
+\usepackage{acl}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{array}
+\usepackage{xcolor}
+
+\newcommand{\task}{\textsc{AstroCLIMB}}
+\newcommand{\sfclass}{\texttt{same\_figure}}
+\newcommand{\spclass}{\texttt{same\_paper}}
+\newcommand{\rpclass}{\texttt{related\_papers}}
+\newcommand{\upclass}{\texttt{unrelated\_papers}}
+
+\title{Syed Mohaiminul Hoque at AstroCLIMB 2026:\\
+Parameter-Efficient Adaptation of Qwen3-VL for Astronomy Citation Linking}
+
+\author{Syed Mohaiminul Hoque \\
+  Center for Computational and Data Sciences \\
+  Independent University, Bangladesh \\
+  \texttt{syedmuhaimintahsin@gmail.com}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe the solo submission of team \emph{Syed Mohaiminul Hoque} to the \task{} shared task at WASP 2026.  The task requires classifying a pair of astronomy figures and/or captions as the same figure, from the same paper, from citation-related papers, or from unrelated papers.  Our system casts classification as constrained next-token prediction with Qwen3-VL and adapts the model using 4-bit quantization and low-rank adapters.  On the 10,000-pair Kaggle test set, our best system---Qwen3-VL-8B with language-attention adapters---obtains 0.73230 macro-F1 and ranks third among 11 participating teams.  This improves over the corresponding 4B system by 0.02479 and over the strongest of three zero-shot baselines by 0.25274.  Controlled experiments show that expanding adaptation into visual layers provides little benefit, while a four-token restricted loss is competitive but does not improve the final leaderboard result.  A citation-focused auxiliary stage also causes negative transfer.  The results suggest that paper-level relations are often carried by textual and cross-modal semantic cues, while distinguishing same-paper from citation-related pairs remains the principal challenge.
+\end{abstract}
+
+\section{Introduction}
+
+Scientific figures condense results that are difficult to recover with text-only indexing.  The \task{} shared task asks systems to partially reconstruct an astronomy citation graph using only figures and captions \citep{astroclimb2026}.  Unlike conventional document classification, the input is a pair of heterogeneous objects: either object may be an image or a caption, and the target is a symmetric relation between their source papers.
+
+Modern vision--language models (VLMs) offer a natural interface for such mixed inputs.  However, full fine-tuning remains expensive, especially on the two NVIDIA T4 GPUs available in a standard Kaggle environment.  We therefore formulate the task as instruction-following with four possible answer tokens and use QLoRA \citep{dettmers2023qlora} to adapt Qwen3-VL \citep{bai2025qwen3vl}.
+
+Our contributions are threefold:
+
+\begin{itemize}
+    \item We develop an end-to-end multimodal classification pipeline that decodes large image strings, represents all three modality combinations uniformly, and exploits relation symmetry through random object swapping.
+    \item We compare model scale, loss normalization, and adapter coverage under a common prediction interface.  The strongest system reaches 0.73230 macro-F1 on the Kaggle test set.
+    \item We analyze a fixed balanced validation split and a negative auxiliary-training result, identifying the \spclass{}--\rpclass{} distinction and visually grounded pairs as the main remaining difficulties.
+\end{itemize}
+
+\section{Task and Data}
+
+Each example is a pair $x_i=(o_{i1},o_{i2})$.  An object is either an English figure caption or a base64-encoded scientific figure.  The four mutually exclusive classes are: (0) \sfclass{}, when the objects are the image and caption of one figure; (1) \spclass{}, when they are different objects from one paper; (2) \rpclass{}, when one source paper cites the other; and (3) \upclass{}.  The relation is symmetric under exchanging the two objects.
+
+The Kaggle release contains 10,000 labeled training pairs and 10,000 test pairs.  Training labels are distributed $(1000,3000,3000,3000)$ in class order.  The official metric is macro-averaged F1,
+\begin{equation}
+F_{1,\mathrm{macro}}=\frac{1}{4}\sum_{c=0}^{3}F_{1,c},
+\end{equation}
+so performance on the less frequent \sfclass{} class contributes equally.  The broader Hugging Face collection contains 94,233 listed figure--caption records with paper DOIs and citation adjacency lists \citep{astroclimbdataset2026}; we use a subset of that metadata only in the auxiliary experiment described in Section~\ref{sec:auxiliary}.
+
+For controlled experiments, we reserve 200 examples per class using seed 42, producing a balanced 800-pair validation set and 9,200 training pairs.  Full-data systems use all 10,000 labeled pairs.  We do not use test metadata, external DOI lookup, or hidden labels.
+
+\section{System Description}
+
+\subsection{Input representation}
+
+We use instruction-tuned Qwen3-VL-4B and Qwen3-VL-8B checkpoints.  A system message defines the four relations and assigns them digits 0--3.  The user message then presents Object~1 and Object~2 in their native modalities and asks for one digit.  Captions are limited to 3,000 characters by retaining both their beginning and end.  Images are decoded to RGB and processed within an area range of $256^2$ to $448^2$ pixels.  This cap is important for fitting the 8B model on T4 hardware.
+
+Because the ground-truth relation is symmetric, each training pair is swapped with probability 0.5:
+\begin{equation}
+\begin{aligned}
+(\tilde{o}_{i1},\tilde{o}_{i2})
+&=\begin{cases}
+(o_{i2},o_{i1}) & b_i=1,\\
+(o_{i1},o_{i2}) & b_i=0,
+\end{cases}\\[-2pt]
+b_i&\sim\mathrm{Bernoulli}(0.5).
+\end{aligned}
+\end{equation}
+The label is unchanged.  We do not use swap test-time augmentation in the submitted systems.
+
+\subsection{QLoRA adaptation}
+
+We load the backbone in 4-bit NormalFloat (NF4) format with double quantization and FP16 computation.  Low-rank adaptation \citep{hu2022lora} modifies a frozen weight $W_0$ as
+\begin{equation}
+W_{\mathrm{eff}}=Q_{\mathrm{NF4}}(W_0)+\frac{\alpha}{r}BA,
+\end{equation}
+where $r=16$, $\alpha=32$, and LoRA dropout is 0.05.  Our main systems adapt the language-model attention projections \texttt{q\_proj}, \texttt{k\_proj}, \texttt{v\_proj}, and \texttt{o\_proj}.  We additionally test (i) those projections plus visual-merger projectors and (ii) all eligible linear layers in both towers.
+
+Training uses two-process distributed data parallelism, one process per T4.  The per-device batch size is one with eight gradient-accumulation steps, giving a global batch size of 16.  The primary full-data systems train for one epoch with learning rate $10^{-4}$.  The 8B restricted-loss refit uses $5\times10^{-5}$ for 1.5 epochs, selected on the fixed validation split.
+
+\subsection{Classification objectives}
+
+Let $t_c$ be the single tokenizer ID for digit $c$, and let $z_{i,v}$ be the model logit immediately before the answer token.  In the full-vocabulary objective, only the answer position is supervised:
+\begin{equation}
+\mathcal{L}_{\mathrm{vocab}}=-\frac{1}{N}\sum_{i=1}^{N}
+\log\frac{\exp z_{i,t_{y_i}}}{\sum_{v\in\mathcal{V}}\exp z_{i,v}}.
+\end{equation}
+We also test a classification-aligned objective whose denominator contains only valid digit tokens:
+\begin{equation}
+\mathcal{L}_{4}=-\frac{1}{N}\sum_{i=1}^{N}
+\log\frac{\exp z_{i,t_{y_i}}}{\sum_{c=0}^{3}\exp z_{i,t_c}}.
+\end{equation}
+Regardless of the training objective, inference reads only the four digit logits and predicts
+\begin{equation}
+\hat{y}_i=\arg\max_{c\in\{0,1,2,3\}} z_{i,t_c}.
+\end{equation}
+This avoids unconstrained generation and makes inference deterministic.
+
+\section{Experiments}
+
+\subsection{Zero-shot baselines}
+
+We first evaluate three instruction-tuned VLMs without parameter updates.  Every model receives the same direct task prompt and is loaded in 4-bit NF4 format.  Table~\ref{tab:zero} shows that Qwen3-VL-4B is the strongest zero-shot system at 0.47956 macro-F1; increased parameter count does not by itself improve prompted performance.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+Model & Test macro-F1 \\
+\midrule
+Qwen3-VL-4B-Instruct & \textbf{0.47956} \\
+Qwen2.5-VL-7B-Instruct & 0.46745 \\
+Qwen3-VL-8B-Instruct & 0.40112 \\
+\bottomrule
+\end{tabular}
+\caption{Zero-shot results on the 10,000-pair Kaggle test set.}
+\label{tab:zero}
+\end{table}
+
+\subsection{Fine-tuned systems}
+
+Table~\ref{tab:main} summarizes our scored QLoRA runs.  Training the 4B language-attention adapters on all available pairs raises macro-F1 from 0.47956 to 0.70751.  Scaling the analogous system to 8B provides the largest observed improvement, reaching 0.73230.  This is our official best system and placed third among 11 teams in the shared task.
+
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{llrlr}
+\toprule
+Backbone & Training setup & Epochs & Adapter coverage & Test macro-F1 \\
+\midrule
+Qwen3-VL-4B & balanced 5K, $\mathcal{L}_{\mathrm{vocab}}$ & 1.0 & language attention & 0.67856 \\
+Qwen3-VL-4B & full 10K, $\mathcal{L}_{\mathrm{vocab}}$ & 1.0 & language attention & 0.70751 \\
+Qwen3-VL-4B & 9.2K, $\mathcal{L}_{4}$ & 2.0 & language attention & 0.71453 \\
+Qwen3-VL-4B & full 10K, $\mathcal{L}_{\mathrm{vocab}}$ & 1.0 & language + visual projectors & 0.71016 \\
+Qwen3-VL-4B & full 10K, $\mathcal{L}_{\mathrm{vocab}}$ & 1.0 & all linear layers & 0.71202 \\
+Qwen3-VL-8B & full 10K, $\mathcal{L}_{\mathrm{vocab}}$ & 1.0 & language attention & \textbf{0.73230} \\
+Qwen3-VL-8B & full 10K, $\mathcal{L}_{4}$ & 1.5 & language attention & 0.73032 \\
+\bottomrule
+\end{tabular}
+\caption{Kaggle test results.  ``Full 10K'' denotes all labeled training pairs; the 9.2K run retains a balanced 800-pair validation set.  Scores are macro-F1.}
+\label{tab:main}
+\end{table*}
+
+The 8B result exceeds the comparable 4B full-data system by 0.02479.  In contrast, broadening 4B adapter coverage from language attention to visual projectors or all linear layers produces only 0.00265 and 0.00451 absolute gains, respectively.  A separate visual-projector-only run scored 0.48182 and was retired: caption--caption pairs do not activate the trainable visual path, making that parameterization structurally unsuitable for the full task.
+
+The restricted four-token loss improves the 4B leaderboard score, although that comparison also changes the split and number of epochs.  On the fixed split, the 8B attention-only restricted system peaks at 0.729164 validation macro-F1 after 1.5 epochs.  Refitting this configuration on all 10,000 pairs yields 0.73032, 0.00198 below the simpler 8B full-vocabulary system.  We therefore retain the latter as our submission.
+
+\subsection{Controlled validation analysis}
+
+Table~\ref{tab:val} reports per-class F1 for the selected restricted-loss checkpoint.  \sfclass{} is the easiest relation, while \rpclass{} is markedly weaker.  The neighboring paper-level labels require inferring bibliographic provenance from content that may not state the link explicitly.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lr}
+\toprule
+Metric & F1 \\
+\midrule
+\sfclass{} & 0.92913 \\
+\spclass{} & 0.66988 \\
+\rpclass{} & 0.53790 \\
+\upclass{} & 0.77975 \\
+\midrule
+Macro average & \textbf{0.72916} \\
+\bottomrule
+\end{tabular}
+\caption{Fixed-split validation results for 8B attention-only QLoRA with the restricted loss.}
+\label{tab:val}
+\end{table}
+
+Adding language MLP targets (\texttt{gate\_proj}, \texttt{up\_proj}, and \texttt{down\_proj}) reaches 0.729019, statistically and practically indistinguishable from attention-only adaptation while requiring more time and memory.  This supports the cheaper attention-only choice.
+
+\subsection{Citation-focused auxiliary training}
+\label{sec:auxiliary}
+
+We investigate whether extra relations constructed from the public citation graph resolve the weakest class.  The auxiliary stage contains 20,000 pairs distributed as $(2000,6000,8000,4000)$, followed by restricted-loss fine-tuning on the 9,200 competition pairs.  Table~\ref{tab:aux} compares it with the fixed-split baseline.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrr}
+\toprule
+Metric & Baseline & +Auxiliary \\
+\midrule
+Macro-F1 & \textbf{0.72916} & 0.71405 \\
+\sfclass{} & \textbf{0.92913} & 0.89431 \\
+\spclass{} & \textbf{0.66988} & 0.62830 \\
+\rpclass{} & 0.53790 & \textbf{0.54067} \\
+\upclass{} & 0.77975 & \textbf{0.79293} \\
+\bottomrule
+\end{tabular}
+\caption{Per-class F1 on the balanced 800-pair validation set.  The sequential auxiliary stage causes a 0.01511 macro-F1 decrease.}
+\label{tab:aux}
+\end{table}
+
+Auxiliary training slightly improves the two different-paper classes but substantially degrades \sfclass{} and \spclass{}.  Its confusion matrix is
+\begin{equation}
+\begin{bmatrix}
+165&30&5&0\\
+4&131&62&3\\
+0&51&113&36\\
+0&5&38&157
+\end{bmatrix},
+\end{equation}
+where rows are gold labels and columns are predictions.  The largest confusion is bidirectional between \spclass{} and \rpclass{} (62 and 51 cases).  We hypothesize an evidence mismatch: metadata establishes a citation edge even when the sampled caption or figure provides no visible indication of it.  Sequentially emphasizing such pairs shifts the decision boundary without teaching observable evidence.  We do not use this model for the test submission.
+
+\section{Error Analysis}
+
+Three patterns emerge.  First, exact figure--caption matching is comparatively tractable because shared entities, numerical values, labels, and panel structure can provide direct alignment.  Second, same-paper and citation-related pairs often concern the same astronomical objects or methods, making topical similarity an unreliable proxy for provenance.  Third, image-heavy inputs are harder than text-heavy inputs.  For the auxiliary model, modality-level macro-F1 is 0.72845 on caption--caption pairs, 0.67108 on caption--image pairs, and 0.65102 on image--image pairs.  These values are diagnostic rather than directly attributable to the submitted full-data model, for which hidden test labels prevent modality-level scoring.
+
+The result that language-side adaptation outperforms broad visual adaptation is therefore not evidence that figures are unimportant.  Instead, the available 10,000 labels may be insufficient to tune many visual parameters, while the pretrained visual encoder already supplies usable features.  Better figure-specific pretraining, OCR, and evidence-aware sampling are promising directions.
+
+\section{Efficiency and Reproducibility}
+
+The full-data restricted 8B run illustrates the resource envelope.  It trains 15,335,424 parameters for 938 optimizer steps in 320.45 minutes, with 11.53~GiB peak allocated memory on rank~0.  Two-GPU inference over 10,000 test pairs takes 78.15 minutes.  Software versions used in the notebooks include Transformers 4.57.1, PEFT 0.17.1, Accelerate 1.10.1, and bitsandbytes 0.47.0.  All experiments use seed 42 where stochastic sampling or splitting is performed.  The released code validates unique IDs, exact column order, binary targets, one prediction per row, and 10,000 output rows.
+
+\section{Conclusion}
+
+Our \task{} system adapts Qwen3-VL with a small set of language-attention LoRA parameters and constrains prediction to four label tokens.  Qwen3-VL-8B achieves 0.73230 test macro-F1 and third place among 11 teams, outperforming both zero-shot inference and the comparable 4B model.  More expansive visual adaptation and sequential citation-graph supervision do not improve the final result.  The remaining errors center on paper-level relations whose defining citation evidence may be absent from the presented objects.  Future work should prioritize evidence-visible auxiliary examples and stronger cross-figure textual grounding rather than indiscriminately increasing adapter coverage.
+
+\section*{Limitations}
+
+Most full-data configurations have no local validation set; their differences are reported from single Kaggle scores and should not be interpreted as statistically significant.  The controlled split uses one random seed and may share source papers across training and validation because paper identifiers are unavailable in the pair CSV.  The hidden test labels prevent per-class, modality-level, and confidence-interval analysis of the submitted system.  Comparisons sometimes vary more than one factor (for example, data size and epoch count), and we identify these cases rather than claiming causal effects.  Caption truncation can omit decisive evidence, while image resizing may remove small text.  Finally, citation relations are defined by metadata and may not be inferable from the visible pair; this imposes a task-level ceiling that our experiments do not estimate.
+
+\section*{Ethics Statement}
+
+The system processes public, open-access scientific figures and captions supplied for the shared task.  It is intended as a benchmark model, not as an authoritative bibliographic database.  Predicted links can be wrong and should not be used to assign credit, evaluate researchers, or alter citation records without verification.  We use only the released training data and public task metadata and do not infer sensitive personal attributes.  The main environmental cost is GPU computation; 4-bit quantization, low-rank adaptation, and constrained one-step inference reduce this cost relative to full-model training and free-form generation.
+
+\section*{Acknowledgments}
+
+The author thanks the WASP 2026 organizers, NASA ADS, and AstroExplorer for organizing \task{} and releasing the benchmark.
+
+\bibliography{references}
+
+\appendix
+
+\section{Prompt}
+\label{sec:prompt}
+
+The system instruction used across the main runs is reproduced below:
+
+\begin{quote}\small
+You classify the relationship between two objects from astronomy papers.\\
+0: The objects are the figure and caption of the same scientific figure.\\
+1: The objects are from different figures in the same paper.\\
+2: The objects are from different papers and one paper cites the other.\\
+3: The objects are from unrelated papers.\\
+The relationship is symmetric. Output only one digit: 0, 1, 2, or 3.
+\end{quote}
+
+Each object is introduced explicitly as either a ``scientific figure'' or a ``figure caption.''  The final user instruction is: ``Classify their relationship. Reply with one digit only.''
+
+\section{Primary Configuration}
+
+\begin{table}[h]
+\centering
+\footnotesize
+\begin{tabular}{@{}ll@{}}
+\toprule
+Setting & Value \\
+\midrule
+Backbone & Qwen3-VL-8B-Instruct \\
+Training pairs & 10,000 \\
+Epochs & 1 \\
+Learning rate & $10^{-4}$ \\
+Quantization & 4-bit NF4, double quantization \\
+Compute dtype & FP16 \\
+LoRA $(r,\alpha,p)$ & $(16,32,0.05)$ \\
+LoRA targets & language $q/k/v/o$ projections \\
+Global batch size & 16 \\
+Maximum image area & $448\times448$ \\
+Maximum caption length & 3,000 characters \\
+Training augmentation & object swap, $p=0.5$ \\
+Inference & four digit-token argmax \\
+Hardware & 2$\times$ NVIDIA T4 \\
+\bottomrule
+\end{tabular}
+\caption{Configuration of the best leaderboard system.}
+\end{table}
+
+\end{document}

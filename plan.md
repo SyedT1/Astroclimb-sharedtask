@@ -10,7 +10,7 @@ The main error-reduction target remains discrimination among:
 - `related_papers`;
 - `unrelated_papers`.
 
-The evidence now favors language-side capacity and a four-class-aligned objective over broader visual adaptation.
+The evidence now favors Qwen3-VL-8B with language-attention QLoRA and the original full-vocabulary objective over broader visual adaptation or auxiliary citation pretraining.
 
 ## Completed work
 
@@ -24,6 +24,7 @@ The evidence now favors language-side capacity and a four-class-aligned objectiv
 | All-linear | Qwen3-VL-4B | 10,000 | 1 | Full-vocabulary CE | Vision and language linear layers | 0.71202 |
 | Restricted four-class | Qwen3-VL-4B | 9,200 + 800 validation | 2 | Restricted four-class CE | Language attention | 0.71453 |
 | 8B language attention | Qwen3-VL-8B | 10,000 | 1 | Full-vocabulary CE | Language attention | **0.73230** |
+| 8B restricted four-class | Qwen3-VL-8B | 10,000 | 1.5 | Restricted four-class CE | Language attention | 0.73032 |
 | Retired vision-only ablation | Qwen3-VL-4B | Image-containing rows | 1 | Full-vocabulary CE | Visual merger only | 0.48182 |
 
 ### Implemented notebooks
@@ -32,6 +33,8 @@ The evidence now favors language-side capacity and a four-class-aligned objectiv
 - [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb)
 - [`astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb)
 - [`astroclimb-qwen3vl8b-language-qlora.ipynb`](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb)
+- [`astroclimb-qwen3vl8b-language-seed17-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed17_qlora/astroclimb-qwen3vl8b-language-seed17-qlora.ipynb)
+- [`astroclimb-qwen3vl8b-language-seed123-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed123_qlora/astroclimb-qwen3vl8b-language-seed123-qlora.ipynb)
 - [`astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb)
 - [`astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb)
 
@@ -45,17 +48,17 @@ Moving from the 4B full-10K language-attention model to the analogous 8B model i
 
 Decision: use Qwen3-VL-8B as the primary backbone for the next controlled experiment.
 
-### 2. Restricted loss is promising
+### 2. Full-vocabulary loss remains the primary 8B objective
 
-The 4B restricted-loss run scored `0.71453`, an improvement of `0.00702` over the 4B full-10K baseline despite withholding 800 rows from training. The comparison is not perfectly controlled because epoch count and split also differ, but it is strong enough to test on 8B.
+The 4B restricted-loss run scored `0.71453`, an improvement of `0.00702` over the 4B full-10K baseline despite withholding 800 rows from training. However, the full-10K 8B restricted-loss refit reached `0.73032`, which is `0.00198` below the simpler full-vocabulary 8B result of `0.73230`.
 
-Decision: restricted four-class cross-entropy is the next objective.
+Decision: retain full-vocabulary training for the seed replications and primary ensemble. Keep the restricted-loss model only as a possible complementary ensemble member.
 
 ### 3. Vision expansion has low priority
 
 The language-plus-projector and all-linear variants improved on the 4B baseline by only `0.00265` and `0.00451`, respectively. The projector-only experiment collapsed to `0.48182`.
 
-Decision: freeze vision modules for the primary 8B run. Do not repeat projector-only adaptation. Consider visual changes only after the 8B restricted-loss path is exhausted.
+Decision: freeze vision modules for the primary 8B runs. Do not repeat projector-only adaptation. Test input resolution separately without expanding LoRA into visual modules.
 
 ### 4. Controlled validation is mandatory
 
@@ -135,7 +138,7 @@ If the 8B run cannot fit, reduce image area before reducing LoRA rank.
 
 ## Priority 2: inference constraints and calibration
 
-Use the saved probabilities from Priority 1. No retraining is required.
+Use saved probabilities from models evaluated on the same fixed split. No retraining is required for mask, calibration, or TTA comparisons, but postprocessing choices must not be selected from full-10K Kaggle scores.
 
 ### Modality mask
 
@@ -178,7 +181,7 @@ Measure prediction disagreement between object orders. Use TTA for the complete 
 
 ## Priority 3: full-10K restricted-loss refit
 
-Status: **notebook updated with the selected attention-only configuration and 1.5-epoch duration; run next**.
+Status: **completed**. The full-data restricted-loss refit scored `0.73032`, below the `0.73230` full-vocabulary system, so it is not the primary standalone model.
 
 Notebook: [`astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_full10k_qlora/astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb)
 
@@ -233,35 +236,9 @@ Test weights:
 
 Average probabilities first, then apply the selected modality mask and biases. Save component probabilities and ensemble weights. Do not ensemble hard one-hot CSVs.
 
-## Priority 6: citation-focused auxiliary QLoRA
+## Retired direction: citation-focused auxiliary QLoRA
 
-Run only if `related_papers` remains the weakest class after the 8B restricted-loss experiment.
-
-Generate caption-focused pairs from public DOI metadata and citation edges:
-
-| Pair type | Rows |
-|---|---:|
-| Same paper | 20,000 |
-| Related papers | 30,000 |
-| Random unrelated papers | 15,000 |
-| Hard unrelated papers | 15,000 |
-| **Total** | **80,000** |
-
-Hard negatives should be topically similar papers with different DOIs and no citation edge. Use public metadata only to generate training examples; do not use it as a test-time override.
-
-```yaml
-stage_1:
-  data: 80000 auxiliary caption pairs
-  epochs: 1
-  learning_rate: 5e-5
-stage_2:
-  data: Kaggle multimodal training split
-  epochs: 1
-  learning_rate: 2e-5
-loss: restricted_four_class_cross_entropy
-```
-
-Keep this stage only if it improves both overall macro-F1 and `related_papers` F1.
+The sequential citation-focused auxiliary run caused negative transfer: validation macro-F1 fell from `0.72916` to `0.71405`. The proposed follow-up auxiliary and hierarchical experiments were removed. Do not spend any of the remaining submission budget on this direction.
 
 ## Deferred ablations
 
@@ -288,15 +265,84 @@ Test `0.00`, `0.05`, and `0.10` only if checkpoint trajectories indicate underfi
 ## Updated execution order
 
 ```text
-P1: 8B restricted loss on fixed 9,200/800 split
-  → P2: modality mask, class calibration, and symmetry TTA analysis
-  → P3: selected 8B restricted configuration refit on all 10K
-  → submit and compare with 0.73230
-  → P4: language attention + MLP restricted-loss ablation
-  → P5: probability ensemble
-  → P6: citation-focused auxiliary training if related_papers remains weak
-  → deferred rank, dropout, resolution, context, and multi-seed ablations
+S1: train/infer full-10K full-vocabulary seed 17
+  → S2: train/infer full-10K full-vocabulary seed 123
+  → S3: equal-probability ensemble with the existing seed-42 system
+  → evaluate swap TTA, modality mask, and restricted-loss blending locally
+  → submit only the postprocessing variants that pass their gates
+  → test longer context and higher resolution one factor at a time
+  → build the strongest validated heterogeneous ensemble
+  → reserve the final upload for the completely frozen champion
 ```
+
+## Twelve-submission queue
+
+There are twelve Kaggle submissions available from this point. Slots 1 and 2 are the two strict seed replications of the current best configuration. The other ten slots are ordered below. A slot is a candidate, not an obligation: skip any candidate that fails its fixed-validation gate and preserve the unused upload.
+
+| Slot | Candidate submission | Required gate |
+|---:|---|---|
+| 1 | Full-10K 8B full-vocabulary, seed 17 | Training completes without class collapse and produces 10,000 valid predictions |
+| 2 | Full-10K 8B full-vocabulary, seed 123 | Training completes without class collapse and produces 10,000 valid predictions |
+| 3 | Equal three-seed full-vocabulary ensemble | Average raw seed-42, seed-17, and seed-123 probabilities; never ensemble one-hot files |
+| 4 | Three-seed ensemble with swap TTA | Forward/reverse averaging improves the fixed validation set enough to justify doubled inference |
+| 5 | Three-seed ensemble with modality mask | Masking impossible `same_figure` predictions improves validation macro-F1 |
+| 6 | Three-seed ensemble with swap TTA and modality mask | Combined rules beat slots 3--5 on validation |
+| 7 | Full-vocabulary ensemble blended with the 8B restricted-loss model | Restricted-loss errors are complementary; choose the blend weight on validation only |
+| 8 | Modality-gated ensemble | Modality-specific weights for CC, CI/IC, and II are stable under bootstrap resampling |
+| 9 | Longer-caption 8B full-vocabulary system | A 6,000-character limit improves validation, especially CC and paper-relation examples |
+| 10 | Higher-resolution 8B full-vocabulary system | The selected image budget improves CI/IC and II validation subsets and fits T4×2 |
+| 11 | Strongest heterogeneous ensemble | Every included system adds validation value; exclude weak models added only for diversity |
+| 12 | Final locked champion | Reserve until models, weights, TTA, mask, ID order, and output checks are frozen |
+
+### Seed-replication configuration
+
+Slots 1 and 2 change only the seed from the `0.73230` system:
+
+```yaml
+model: Qwen/Qwen3-VL-8B-Instruct
+training_rows: 10000
+epochs: 1
+learning_rate: 1e-4
+loss: full_vocabulary_label_token_cross_entropy
+lora_targets: [q_proj, k_proj, v_proj, o_proj]
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+global_batch_size: 16
+image_area_budget: 448x448
+max_text_chars: 3000
+seeds: [17, 123]
+```
+
+Notebooks:
+
+- [`astroclimb-qwen3vl8b-language-seed17-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed17_qlora/astroclimb-qwen3vl8b-language-seed17-qlora.ipynb)
+- [`astroclimb-qwen3vl8b-language-seed123-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed123_qlora/astroclimb-qwen3vl8b-language-seed123-qlora.ipynb)
+
+### Three-seed ensemble
+
+For slot 3, average the raw probability files:
+
+$$
+p_{\mathrm{seed}}=\frac{p_{42}+p_{17}+p_{123}}{3}.
+$$
+
+All three probability files must have identical IDs and ordering. Renormalize only if necessary for numerical precision, then take the four-class argmax.
+
+### Context and resolution candidates
+
+Slot 9 changes only `MAX_TEXT_CHARS` from `3000` to `6000`. Slot 10 changes only the maximum image-area budget, beginning with a small memory/timing pilot before full training. Do not change the seed, loss, LoRA targets, rank, alpha, dropout, or epoch count in either experiment.
+
+### Final submission validation
+
+Before every upload—and especially slot 12—verify:
+
+- exactly 10,000 rows and 10,000 unique test IDs;
+- IDs match the test manifest and appear in the required order;
+- columns are exactly `id`, `same_figure`, `same_paper`, `related_papers`, and `unrelated_papers`;
+- target cells are binary and every row sums to one;
+- raw component probabilities, ensemble weights, and postprocessing switches are archived;
+- no choice was made solely from Kaggle feedback.
 
 ## Stop conditions
 

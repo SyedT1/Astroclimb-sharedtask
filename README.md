@@ -173,15 +173,54 @@ See [experiments.md](experiments.md) for the experiment sequence and ablations.
 
 The following scores were obtained by the completed QLoRA notebooks. They are user-reported Kaggle macro-F1 results.
 
-| Notebook | Kaggle score | Model | Epochs | Training dataset | Validation dataset | LoRA rank (`r`) | LoRA alpha | LoRA dropout | LoRA target modules |
-|---|---:|---|---:|---:|---:|---:|---:|---:|---|
-| [`astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | **0.67856** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | 5,000 balanced pairs (1,250 per class) | 400 pairs | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-| [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | **0.70751** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-| [`astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb) | **0.71453** | `Qwen/Qwen3-VL-4B-Instruct` | 2 | 9,200 pairs | 800 balanced pairs (200 per class) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-| [`astroclimb-qwen3vl8b-language-qlora.ipynb`](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb) | **0.73230** | `Qwen/Qwen3-VL-8B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-| [`astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_full10k_qlora/astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb) | **0.73032** | `Qwen/Qwen3-VL-8B-Instruct` | 1.5 | All 10,000 labeled pairs | None (validation-selected final fit) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj` |
-| [`astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | **0.71202** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | All eligible linear layers in the vision and language towers |
-| [`astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | **0.71016** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention projections plus visual merger projectors |
+| Notebook | Kaggle score | Model | Seed | Epochs | Training dataset | Validation dataset | LoRA rank (`r`) | LoRA alpha | LoRA dropout | LoRA target modules |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|
+| [`astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | **0.67856** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 1 | 5,000 balanced pairs (1,250 per class) | 400 pairs | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | **0.70751** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb) | **0.71453** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 2 | 9,200 pairs | 800 balanced pairs (200 per class) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-qwen3vl8b-language-seed17-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed17_qlora/astroclimb-qwen3vl8b-language-seed17-qlora.ipynb) | **0.73307** | `Qwen/Qwen3-VL-8B-Instruct` | 17 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-qwen3vl8b-language-seed123-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed123_qlora/astroclimb-qwen3vl8b-language-seed123-qlora.ipynb) | **0.73250** | `Qwen/Qwen3-VL-8B-Instruct` | 123 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-qwen3vl8b-language-qlora.ipynb`](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb) | **0.73230** | `Qwen/Qwen3-VL-8B-Instruct` | 42 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_full10k_qlora/astroclimb-qwen3vl8b-restricted-full10k-qlora.ipynb) | **0.73032** | `Qwen/Qwen3-VL-8B-Instruct` | 42 | 1.5 | All 10,000 labeled pairs | None (validation-selected final fit) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj` |
+| [`astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | **0.71202** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | All eligible linear layers in the vision and language towers |
+| [`astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | **0.71016** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention projections plus visual merger projectors |
+
+### Full-10K Qwen3-VL-8B seed replications
+
+The three full-vocabulary 8B runs differ only in random seed. Seed 17 remains the current best user-reported Kaggle submission at **0.73307 macro-F1**. Seed 123 obtains **0.73250**, which is `0.00020` above seed 42 and `0.00057` below seed 17. These small differences should be treated as seed variation rather than evidence that one seed is intrinsically superior.
+
+| Seed | Kaggle macro-F1 | Difference from seed 42 |
+|---:|---:|---:|
+| 17 | **0.73307** | +0.00077 |
+| 123 | **0.73250** | +0.00020 |
+| 42 | **0.73230** | — |
+
+Across the three seeds, the mean Kaggle macro-F1 is **0.73262** with sample standard deviation **0.00040** and range **0.00077**.
+
+| Setting | Value |
+|---|---|
+| Scored replication notebooks | [Seed 17](astroclimb_qwen3vl8b_language_seed17_qlora/astroclimb-qwen3vl8b-language-seed17-qlora.ipynb); [seed 123](astroclimb_qwen3vl8b_language_seed123_qlora/astroclimb-qwen3vl8b-language-seed123-qlora.ipynb); [seed 42](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb) |
+| Kaggle macro-F1 | Seed 17: **0.73307**; seed 123: **0.73250**; seed 42: **0.73230** |
+| Random seeds | Base seeds **17**, **123**, and **42**; each DDP worker seeds Python, NumPy, and PyTorch with `base_seed + local_rank`, while the Transformers trainer uses the base seed |
+| Backbone | `Qwen/Qwen3-VL-8B-Instruct` |
+| Training data | All 10,000 labeled pairs; no oversampling |
+| Validation data | None; final fit |
+| Objective | Full-vocabulary cross-entropy at the single answer-token position |
+| Epochs | 1 |
+| Learning rate | $10^{-4}$ |
+| Schedule | Cosine decay with 0.05 warmup ratio |
+| Optimizer | Paged AdamW 8-bit; weight decay 0.01; maximum gradient norm 1.0 |
+| Quantization | 4-bit NF4 with double quantization and FP16 computation |
+| LoRA | Rank 16, alpha 32, dropout 0.05, no bias |
+| LoRA targets | Language-attention `q_proj`, `k_proj`, `v_proj`, and `o_proj` |
+| Batch configuration | Per-device batch 1, two GPUs, 8 accumulation steps; global batch 16 |
+| Training augmentation | Random object-order swap with probability 0.5 |
+| Image area range | $256^2$ to $448^2$ pixels |
+| Maximum caption length | 3,000 characters per object, retaining the beginning and end |
+| Test inference | Four digit-token probabilities over classes 0--3; 10,000 rows |
+| Swap TTA / modality mask | Disabled / disabled |
+| Hardware | Two NVIDIA T4 GPUs with two-process DDP |
+| Saved outputs | Adapter, training metrics, probability shards, `submission_probabilities.csv`, and one-hot `submission.csv` |
 
 ### Zero-shot baselines
 
@@ -209,9 +248,38 @@ All three notebooks use the same inference configuration apart from the model ch
 | Swap test-time augmentation | Disabled |
 | Test inference | Streamed over all 10,000 test pairs with one-hot submission output |
 
-The 8B restricted full-10K refit uses the attention-only configuration selected by the fixed 9,200/800 validation experiment: checkpoint 863 at 1.5 epochs with validation macro-F1 `0.729164`. It trains all 10,000 labeled rows with learning rate $5\times10^{-5}$, global batch size 16, 4-bit NF4 quantization, and restricted four-token cross-entropy. The run used 15,335,424 trainable parameters, completed 938 optimizer steps in 320.45 minutes, peaked at 11.53 GiB on rank 0, and completed two-GPU test inference in 78.15 minutes. Its test prediction counts were `(1035, 2668, 3267, 3030)` in class order. Its Kaggle score is `0.00198` below the `0.73230` 8B full-vocabulary result, so the latter remains the current best submission.
+The 8B restricted full-10K refit uses the attention-only configuration selected by the fixed 9,200/800 validation experiment: checkpoint 863 at 1.5 epochs with validation macro-F1 `0.729164`. It trains all 10,000 labeled rows with learning rate $5\times10^{-5}$, global batch size 16, 4-bit NF4 quantization, and restricted four-token cross-entropy. The run used 15,335,424 trainable parameters, completed 938 optimizer steps in 320.45 minutes, peaked at 11.53 GiB on rank 0, and completed two-GPU test inference in 78.15 minutes. Its test prediction counts were `(1035, 2668, 3267, 3030)` in class order. Its Kaggle score is `0.00275` below the current seed-17 full-vocabulary best of `0.73307`; therefore the full-vocabulary objective remains the primary configuration.
 
-### Mathematical formulation of the seven notebooks
+### Relation-focused auxiliary-training ablation
+
+The 20K relation-focused auxiliary experiment is a validation-only negative ablation rather than a leaderboard submission. It first adapts `Qwen/Qwen3-VL-8B-Instruct` on 20,000 metadata-derived pairs with class allocation `(2000, 6000, 8000, 4000)`, then fine-tunes on the fixed 9,200-row competition split and evaluates on the same balanced 800-row validation set. The competition stage uses restricted four-token cross-entropy, language-attention `q_proj`, `k_proj`, `v_proj`, and `o_proj` LoRA targets, learning rate $10^{-5}$, and 1.5 epochs. Its selected final checkpoint is step 863.
+
+| Validation metric | Restricted-loss baseline | Auxiliary experiment | Change |
+|---|---:|---:|---:|
+| Macro-F1 | 0.729164 | 0.714051 | -0.015113 |
+| `same_figure` F1 | 0.929134 | 0.894309 | -0.034825 |
+| `same_paper` F1 | 0.669880 | 0.628297 | -0.041583 |
+| `related_papers` F1 | 0.537897 | 0.540670 | +0.002773 |
+| `unrelated_papers` F1 | 0.779747 | 0.792929 | +0.013182 |
+| Mean F1 of classes 1 and 2 | 0.603889 | 0.584484 | -0.019405 |
+
+The auxiliary model's validation confusion matrix, with true classes as rows and predicted classes as columns, is
+
+$$
+C=
+\begin{bmatrix}
+165 & 30 & 5 & 0 \\
+4 & 131 & 62 & 3 \\
+0 & 51 & 113 & 36 \\
+0 & 5 & 38 & 157
+\end{bmatrix}.
+$$
+
+The dominant error remains the `same_paper`/`related_papers` boundary: 62 `same_paper` examples are predicted as `related_papers`, while 51 errors occur in the reverse direction. A further 74 errors cross the `related_papers`/`unrelated_papers` boundary. Modality macro-F1 is `0.728454` for caption-caption (181 rows), `0.671083` for caption-image (402 rows), and `0.651020` for image-image (217 rows).
+
+This experiment therefore does not satisfy its improvement criterion. It gains only `0.002773` F1 on `related_papers` and `0.013182` on `unrelated_papers`, while losing substantially more on `same_paper` and `same_figure`. The likely cause is an evidence mismatch: DOI and citation metadata can define a correct paper-level relationship even when the sampled figures or captions do not visibly express it. The 8,000 auxiliary `related_papers` pairs consequently shift predictions toward class 2 without establishing a cleaner class-1/class-2 boundary. The exact configuration should not be refitted on the full 10K training set. It is retained as a paper ablation showing that unfiltered metadata-derived sequential auxiliary supervision can cause negative transfer. A low-cost follow-up is to sweep probability blends between this model and the baseline; any new auxiliary run should instead use confidence-filtered, evidence-visible pairs and interleave a small auxiliary fraction with competition data.
+
+### Mathematical formulation of the scored fine-tuning notebooks
 
 For every object pair $x_i=(o_{i1},o_{i2})$, the one-hot target is converted to a class index
 
@@ -257,7 +325,7 @@ There is no held-out validation set in this final-fit notebook.
 
 #### Qwen3-VL-8B full-10k language-attention notebook
 
-The 8B notebook also uses all 10,000 rows once, without oversampling or a validation holdout. Let $z^{(8\mathrm B)}_{i,v}$ denote the next-token logits from `Qwen3-VL-8B-Instruct`. Its label-only loss retains the original full-vocabulary objective:
+The 8B notebook and its seed-17 and seed-123 replications use all 10,000 rows once, without oversampling or a validation holdout. Let $z^{(8\mathrm B)}_{i,v}$ denote the next-token logits from `Qwen3-VL-8B-Instruct`. Their label-only loss retains the original full-vocabulary objective:
 
 $$
 \mathcal L_{\text{8B}}
@@ -266,7 +334,7 @@ $$
 {\sum_{v\in\mathcal V}\exp\left(z^{(8\mathrm B)}_{i,v}\right)}.
 $$
 
-Thus, the mathematical training objective and class distribution match the 4B full-10k notebook; the principal change is the larger 8B backbone. LoRA remains restricted to the language-attention projections.
+Thus, the mathematical training objective and class distribution match the 4B full-10k notebook; the principal change is the larger 8B backbone. LoRA remains restricted to the language-attention projections. The scored 8B replications differ only in random seed: 42 produces `0.73230`, 123 produces `0.73250`, and 17 produces `0.73307`.
 
 #### Qwen3-VL-8B restricted-loss full-10k notebook
 
@@ -369,7 +437,7 @@ W_{\text{eff}}=Q_{\text{NF4}}(W_0)+\frac{\alpha}{r}BA
 =Q_{\text{NF4}}(W_0)+2BA,
 $$
 
-where $r=16$, $\alpha=32$, $A\in\mathbb R^{r\times d_{\text{in}}}$, and $B\in\mathbb R^{d_{\text{out}}\times r}$. Only $A$ and $B$ are optimized; LoRA dropout is $0.05$. Five scored notebooks adapt only `q_proj`, `k_proj`, `v_proj`, and `o_proj`; the language-projector notebook adds the visual merger projectors, while the all-linear notebook adapts every eligible linear layer in both model towers.
+where $r=16$, $\alpha=32$, $A\in\mathbb R^{r\times d_{\text{in}}}$, and $B\in\mathbb R^{d_{\text{out}}\times r}$. Only $A$ and $B$ are optimized; LoRA dropout is $0.05$. Seven scored notebooks adapt only `q_proj`, `k_proj`, `v_proj`, and `o_proj`; the language-projector notebook adds the visual merger projectors, while the all-linear notebook adapts every eligible linear layer in both model towers.
 
 Because the relation is symmetric, let $S$ denote the swap operation. Training applies it with probability $1/2$ while preserving the label:
 
@@ -380,7 +448,7 @@ S(o_{i1},o_{i2})=(o_{i2},o_{i1}),
 \qquad \tilde{y}_i=y_i.
 $$
 
-All seven scored notebooks restrict inference to the four digit tokens, even when training used full-vocabulary cross-entropy:
+All nine scored fine-tuning notebooks restrict inference to the four digit tokens, even when training used full-vocabulary cross-entropy:
 
 $$
 p_i(c)=\frac{\exp(z_{i,t_c})}{\sum_{k=0}^{3}\exp(z_{i,t_k})},
@@ -407,6 +475,8 @@ The base model was loaded using 4-bit NF4 quantization with double quantization 
 | [`astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | Final training on all 10,000 labeled pairs, full test inference, and submission generation. |
 | [`astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb`](astroclimb_restricted4class_qwen3vl_qlora/astroclimb-restricted4class-qwen3vl-qlora.ipynb) | Restricted four-class-loss QLoRA experiment with a balanced 800-example validation split. |
 | [`astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb`](astroclimb_qwen3vl8b_language_qlora/astroclimb-qwen3vl8b-language-qlora.ipynb) | Qwen3-VL-8B language-attention QLoRA trained on all 10,000 labeled pairs. |
+| [`astroclimb_qwen3vl8b_language_seed17_qlora/astroclimb-qwen3vl8b-language-seed17-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed17_qlora/astroclimb-qwen3vl8b-language-seed17-qlora.ipynb) | Seed-17 replication of the full-10K Qwen3-VL-8B language-attention system; current best Kaggle macro-F1 `0.73307`. |
+| [`astroclimb_qwen3vl8b_language_seed123_qlora/astroclimb-qwen3vl8b-language-seed123-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed123_qlora/astroclimb-qwen3vl8b-language-seed123-qlora.ipynb) | Seed-123 replication of the full-10K Qwen3-VL-8B language-attention system; Kaggle macro-F1 `0.73250`. |
 | [`astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | Qwen3-VL-4B all-linear QLoRA across the vision and language towers, trained on all 10,000 labeled pairs. |
 | [`astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | Qwen3-VL-4B language-attention plus visual-projector QLoRA trained on all 10,000 labeled pairs. |
 | [`astroclimb_qwen3vl8b_restricted_validation_qlora/astroclimb-qwen3vl8b-restricted-validation-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_validation_qlora/astroclimb-qwen3vl8b-restricted-validation-qlora.ipynb) | Qwen3-VL-8B restricted-loss language-attention experiment on the fixed 9,200/800 split. |

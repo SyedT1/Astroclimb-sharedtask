@@ -1,0 +1,43 @@
+\begin{thebibliography}{5}
+\providecommand{\natexlab}[1]{#1}
+
+\bibitem[{Bai et~al.(2025)Bai, Cai, Chen, Chen, Chen, Cheng, Deng, Ding, Gao,
+  Ge et~al.}]{bai2025qwen3vl}
+Shuai Bai, Yuxuan Cai, Ruizhe Chen, Keqin Chen, Xionghui Chen, Zesen Cheng,
+  Lianghao Deng, Wei Ding, Chang Gao, Chunjiang Ge, et~al. 2025.
+\newblock \href {https://arxiv.org/abs/2511.21631} {{Qwen3-VL} technical
+  report}.
+\newblock \emph{arXiv preprint arXiv:2511.21631}.
+
+\bibitem[{Dettmers et~al.(2023)Dettmers, Pagnoni, Holtzman, and
+  Zettlemoyer}]{dettmers2023qlora}
+Tim Dettmers, Artidoro Pagnoni, Ari Holtzman, and Luke Zettlemoyer. 2023.
+\newblock \href {https://arxiv.org/abs/2305.14314} {{QLoRA}: Efficient
+  finetuning of quantized {LLM}s}.
+\newblock In \emph{Advances in Neural Information Processing Systems},
+  volume~36.
+
+\bibitem[{Hu et~al.(2022)Hu, Shen, Wallis, Allen-Zhu, Li, Wang, Wang, and
+  Chen}]{hu2022lora}
+Edward~J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean
+  Wang, Lu~Wang, and Weizhu Chen. 2022.
+\newblock \href {https://openreview.net/forum?id=nZeVKeeFYf9} {{LoRA}: Low-rank
+  adaptation of large language models}.
+\newblock In \emph{International Conference on Learning Representations}.
+
+\bibitem[{{NASA Astrophysics Data System}(2026)}]{astroclimbdataset2026}
+{NASA Astrophysics Data System}. 2026.
+\newblock \href {https://huggingface.co/datasets/adsabs/AstroCLIMB}
+  {{AstroCLIMB} dataset}.
+\newblock Hugging Face Datasets.
+\newblock Accessed 2026-09-18.
+
+\bibitem[{{WASP 2026 Organizers}(2026)}]{astroclimb2026}
+{WASP 2026 Organizers}. 2026.
+\newblock \href {https://ui.adsabs.harvard.edu/WIESP/2026/shared_task}
+  {{AstroCLIMB}: Astronomy citation linking from illustrations: A multimodal
+  benchmark}.
+\newblock WASP 2026 Shared Task.
+\newblock Accessed 2026-09-18.
+
+\end{thebibliography}
