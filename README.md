@@ -183,6 +183,32 @@ The following scores were obtained by the completed QLoRA notebooks. They are us
 | [`astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | **0.71202** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | All eligible linear layers in the vision and language towers |
 | [`astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | **0.71016** | `Qwen/Qwen3-VL-4B-Instruct` | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention projections plus visual merger projectors |
 
+### Zero-shot baselines
+
+These inference-only notebooks perform no training or parameter updates. Their user-reported Kaggle macro-F1 scores are:
+
+| Notebook | Kaggle score | Model |
+|---|---:|---|
+| [`astroclimb-qwen3vl4b-zero-shot.ipynb`](baseline/astroclimb_qwen3vl4b_zero_shot/astroclimb-qwen3vl4b-zero-shot.ipynb) | **0.47956** | `Qwen/Qwen3-VL-4B-Instruct` |
+| [`astroclimb-qwen3vl8b-zero-shot.ipynb`](baseline/astroclimb_qwen3vl8b_zero_shot/astroclimb-qwen3vl8b-zero-shot.ipynb) | **0.40112** | `Qwen/Qwen3-VL-8B-Instruct` |
+| [`astroclimb-qwen25vl7b-zero-shot.ipynb`](baseline/astroclimb_qwen25vl7b_zero_shot/astroclimb-qwen25vl7b-zero-shot.ipynb) | **0.46745** | `Qwen/Qwen2.5-VL-7B-Instruct` |
+
+All three notebooks use the same inference configuration apart from the model checkpoint:
+
+| Setting | Value |
+|---|---|
+| Models | `Qwen/Qwen3-VL-4B-Instruct`; `Qwen/Qwen3-VL-8B-Instruct`; `Qwen/Qwen2.5-VL-7B-Instruct` |
+| Loading | 4-bit NF4 with double quantization and FP16 computation |
+| Attention implementation | SDPA |
+| Hardware layout | One visible Kaggle T4 (`cuda:0`) |
+| Image area range | $256^2$ to $448^2$ pixels |
+| Maximum caption length | 3,000 characters per object |
+| Validation sample | 256 balanced pairs (64 per class) |
+| Prompt | Direct classification with the four relation definitions and a one-digit response |
+| Prediction | Constrained next-token probabilities over tokens `0`, `1`, `2`, and `3` |
+| Swap test-time augmentation | Disabled |
+| Test inference | Streamed over all 10,000 test pairs with one-hot submission output |
+
 The 8B restricted full-10K refit uses the attention-only configuration selected by the fixed 9,200/800 validation experiment: checkpoint 863 at 1.5 epochs with validation macro-F1 `0.729164`. It trains all 10,000 labeled rows with learning rate $5\times10^{-5}$, global batch size 16, 4-bit NF4 quantization, and restricted four-token cross-entropy. The run used 15,335,424 trainable parameters, completed 938 optimizer steps in 320.45 minutes, peaked at 11.53 GiB on rank 0, and completed two-GPU test inference in 78.15 minutes. Its test prediction counts were `(1035, 2668, 3267, 3030)` in class order. Its Kaggle score is `0.00198` below the `0.73230` 8B full-vocabulary result, so the latter remains the current best submission.
 
 ### Mathematical formulation of the seven notebooks
