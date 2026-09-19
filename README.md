@@ -173,6 +173,10 @@ See [experiments.md](experiments.md) for the experiment sequence and ablations.
 
 The following scores were obtained by the completed QLoRA runs and their derived ensemble and postprocessing systems. They are user-reported Kaggle macro-F1 results.
 
+### Frozen-feature non-VLM baseline
+
+[`metadata-first-hybrid-training.ipynb`](notebooks/metadata-first-hybrid-training.ipynb) is a non-generative, frozen-feature classifier pipeline rather than a SPECTER-only model. It combines frozen [SPECTER2](https://aclanthology.org/2023.emnlp-main.338/) caption embeddings, [SigLIP2](https://arxiv.org/abs/2502.14786) image--text embeddings, and [DINO](https://arxiv.org/abs/2508.10104) visual embeddings with word/character TF-IDF, OCR overlap, and perceptual-hash features. Three modality-specific CatBoost models classify caption--caption, mixed, and image--image pairs. The resulting submission scored **0.48279 macro-F1** on the final Kaggle leaderboard.
+
 | Run / artifact | Kaggle score | Model | Seed | Epochs | Training dataset | Validation dataset | LoRA rank (`r`) | LoRA alpha | LoRA dropout | LoRA target modules |
 |---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|
 | [Three-seed ensemble + modality mask](astroclimb-qwen3vl8b-three-seed-modality-mask/astroclimb-qwen3vl8b-three-seed-modality-mask.ipynb) | **0.73725** | `Qwen/Qwen3-VL-8B-Instruct` | 17, 42, 123 | 1 each | All 10,000 labeled pairs per seed | None (final fits) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj`; inference-only modality mask |
