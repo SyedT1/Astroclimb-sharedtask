@@ -171,10 +171,11 @@ See [experiments.md](experiments.md) for the experiment sequence and ablations.
 
 ## Experiment results
 
-The following scores were obtained by the completed QLoRA runs and their probability ensemble. They are user-reported Kaggle macro-F1 results.
+The following scores were obtained by the completed QLoRA runs and their derived ensemble and postprocessing systems. They are user-reported Kaggle macro-F1 results.
 
 | Run / artifact | Kaggle score | Model | Seed | Epochs | Training dataset | Validation dataset | LoRA rank (`r`) | LoRA alpha | LoRA dropout | LoRA target modules |
 |---|---:|---|---:|---:|---:|---:|---:|---:|---:|---|
+| [Three-seed ensemble + modality mask](astroclimb-qwen3vl8b-three-seed-modality-mask/astroclimb-qwen3vl8b-three-seed-modality-mask.ipynb) | **0.73725** | `Qwen/Qwen3-VL-8B-Instruct` | 17, 42, 123 | 1 each | All 10,000 labeled pairs per seed | None (final fits) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj`; inference-only modality mask |
 | [Three-seed probability ensemble](astroclimb_qwen3vl8b_three_seed_ensemble/submission.csv) | **0.73604** | `Qwen/Qwen3-VL-8B-Instruct` | 17, 42, 123 | 1 each | All 10,000 labeled pairs per seed | None (final fits) | 16 | 32 | 0.05 | Language-attention `q_proj`, `k_proj`, `v_proj`, `o_proj` |
 | [`astroclimb-5k-qwen3vl-qlora.ipynb`](astroclimb_5k_qwen3vl_qlora/astroclimb-5k-qwen3vl-qlora.ipynb) | **0.67856** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 1 | 5,000 balanced pairs (1,250 per class) | 400 pairs | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
 | [`astroclimb-full10k-qwen3vl-qlora.ipynb`](astroclimb_full10k_qwen3vl_qlora/astroclimb-full10k-qwen3vl-qlora.ipynb) | **0.70751** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | `q_proj`, `k_proj`, `v_proj`, `o_proj` |
@@ -186,9 +187,56 @@ The following scores were obtained by the completed QLoRA runs and their probabi
 | [`astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | **0.71202** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | All eligible linear layers in the vision and language towers |
 | [`astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | **0.71016** | `Qwen/Qwen3-VL-4B-Instruct` | 42 | 1 | All 10,000 labeled pairs | None (final fit) | 16 | 32 | 0.05 | Language-attention projections plus visual merger projectors |
 
+### Three-seed Qwen3-VL-8B ensemble with modality mask
+
+The current best user-reported Kaggle result is **0.73725 macro-F1**, produced by applying a deterministic modality constraint to the `0.73604` three-seed probability ensemble. This is an absolute improvement of `0.00121` over the raw ensemble and `0.00418` over the best individual seed. No model was retrained, and no additional model inference was required.
+
+The `same_figure` relationship is possible only when one object is a figure and the other is a caption. For caption--caption (`CC`) and image--image (`II`) pairs, the system therefore sets the ensemble's `same_figure` probability to zero and renormalizes the other three probabilities. If $p(c\mid x)$ is the raw ensemble distribution and $m(x)$ is the pair modality, the postprocessed distribution is
+
+$$
+\widetilde p(c\mid x)=
+\begin{cases}
+0, & m(x)\in\{\mathrm{CC},\mathrm{II}\},\ c=\texttt{same\_figure},\\
+\dfrac{p(c\mid x)}{1-p(\texttt{same\_figure}\mid x)},
+& m(x)\in\{\mathrm{CC},\mathrm{II}\},\ c\ne\texttt{same\_figure},\\
+p(c\mid x), & m(x)\in\{\mathrm{CI},\mathrm{IC}\}.
+\end{cases}
+$$
+
+The test CSV is streamed rather than loaded into memory. An object is classified as an image from its encoded-image signature (`iVBORw0KGgo`, `/9j/`, `UklGR`, `R0lGOD`, or `data:image`); all other objects are treated as captions. The established test-set modality distribution is 3,000 `CC`, 4,000 cross-modal, and 3,000 `II` pairs, so the constraint applies to 6,000 of 10,000 rows. Cross-modal probability vectors are left unchanged.
+
+| Setting | Value |
+|---|---|
+| Input probabilities | Equal arithmetic mean of the seed-17, seed-42, and seed-123 four-class probabilities |
+| Kaggle input path used | `/kaggle/input/datasets/syedmohaiminulhoque/submission-probabilities/submission_probabilities.csv` |
+| Postprocessing | Set `p_same_figure` to zero for `CC` and `II`, then renormalize |
+| Prediction | Argmax of the postprocessed four-class probability vector |
+| Swap TTA | Disabled |
+| Class-bias calibration | Disabled |
+| Restricted-loss blending | Disabled |
+| Additional training or inference | None |
+| Hardware | CPU only; Kaggle accelerator set to `None` |
+| Rows masked / unchanged | 6,000 `CC` or `II` rows / 4,000 cross-modal rows |
+| Predictions changed | 7, all removed from the impossible `same_figure` class |
+| Raw prediction counts | `(998, 2480, 3495, 3027)` in class order |
+| Masked prediction counts | `(991, 2487, 3495, 3027)` in class order |
+| Notebook | [`astroclimb-qwen3vl8b-three-seed-modality-mask.ipynb`](astroclimb-qwen3vl8b-three-seed-modality-mask/astroclimb-qwen3vl8b-three-seed-modality-mask.ipynb) |
+| Generated artifacts | [`submission.csv`](astroclimb-qwen3vl8b-three-seed-modality-mask/submission.csv) and [`submission_probabilities.csv`](astroclimb-qwen3vl8b-three-seed-modality-mask/submission_probabilities.csv) |
+| Kaggle macro-F1 | **0.73725** |
+
+The immediately preceding postprocessing results are:
+
+| System | Kaggle macro-F1 | Change from raw ensemble |
+|---|---:|---:|
+| Raw three-seed ensemble | 0.73604 | — |
+| 75% three-seed ensemble + 25% restricted-loss model | 0.73590 | -0.00014 |
+| Three-seed ensemble + modality mask | **0.73725** | **+0.00121** |
+
+The restricted-loss blend was not promoted because it slightly reduced the score. The modality mask becomes the current champion, although its `0.00121` gain remains below the project's usual `0.005` threshold for a practically decisive validation improvement.
+
 ### Three-seed Qwen3-VL-8B probability ensemble
 
-The current best user-reported Kaggle result is **0.73604 macro-F1**, obtained by an equal-weight probability ensemble of the full-vocabulary Qwen3-VL-8B language-attention models trained with seeds 17, 42, and 123. This improves on the best individual seed, seed 17 at `0.73307`, by `0.00297`.
+The unmasked equal-weight probability ensemble obtains **0.73604 macro-F1** from full-vocabulary Qwen3-VL-8B language-attention models trained with seeds 17, 42, and 123. This improves on the best individual seed, seed 17 at `0.73307`, by `0.00297` and supplies the probabilities used by the modality-mask champion.
 
 For each test pair, the ensemble aligns the three raw four-class probability vectors by `id`, averages them, and then takes the class argmax:
 
@@ -283,7 +331,7 @@ All three notebooks use the same inference configuration apart from the model ch
 | Swap test-time augmentation | Disabled |
 | Test inference | Streamed over all 10,000 test pairs with one-hot submission output |
 
-The 8B restricted full-10K refit uses the attention-only configuration selected by the fixed 9,200/800 validation experiment: checkpoint 863 at 1.5 epochs with validation macro-F1 `0.729164`. It trains all 10,000 labeled rows with learning rate $5\times10^{-5}$, global batch size 16, 4-bit NF4 quantization, and restricted four-token cross-entropy. The run used 15,335,424 trainable parameters, completed 938 optimizer steps in 320.45 minutes, peaked at 11.53 GiB on rank 0, and completed two-GPU test inference in 78.15 minutes. Its test prediction counts were `(1035, 2668, 3267, 3030)` in class order. Its Kaggle score is `0.00275` below the best individual seed-17 full-vocabulary model at `0.73307` and `0.00572` below the three-seed ensemble at `0.73604`; therefore the full-vocabulary objective remains the primary configuration.
+The 8B restricted full-10K refit uses the attention-only configuration selected by the fixed 9,200/800 validation experiment: checkpoint 863 at 1.5 epochs with validation macro-F1 `0.729164`. It trains all 10,000 labeled rows with learning rate $5\times10^{-5}$, global batch size 16, 4-bit NF4 quantization, and restricted four-token cross-entropy. The run used 15,335,424 trainable parameters, completed 938 optimizer steps in 320.45 minutes, peaked at 11.53 GiB on rank 0, and completed two-GPU test inference in 78.15 minutes. Its test prediction counts were `(1035, 2668, 3267, 3030)` in class order. Its Kaggle score is `0.00275` below the best individual seed-17 full-vocabulary model at `0.73307`, `0.00572` below the raw three-seed ensemble at `0.73604`, and `0.00693` below the modality-mask champion at `0.73725`; therefore the full-vocabulary objective remains the primary configuration.
 
 ### Relation-focused auxiliary-training ablation
 
@@ -513,7 +561,9 @@ The base model was loaded using 4-bit NF4 quantization with double quantization 
 | [`astroclimb_qwen3vl8b_language_seed17_qlora/astroclimb-qwen3vl8b-language-seed17-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed17_qlora/astroclimb-qwen3vl8b-language-seed17-qlora.ipynb) | Seed-17 replication of the full-10K Qwen3-VL-8B language-attention system; best individual-model Kaggle macro-F1 `0.73307`. |
 | [`astroclimb_qwen3vl8b_language_seed123_qlora/astroclimb-qwen3vl8b-language-seed123-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed123_qlora/astroclimb-qwen3vl8b-language-seed123-qlora.ipynb) | Seed-123 replication of the full-10K Qwen3-VL-8B language-attention system; Kaggle macro-F1 `0.73250`. |
 | [`astroclimb_qwen3vl8b_language_seed42_qlora/astroclimb-qwen3vl8b-language-seed42-qlora.ipynb`](astroclimb_qwen3vl8b_language_seed42_qlora/astroclimb-qwen3vl8b-language-seed42-qlora.ipynb) | Seed-42 artifact-recovery rerun used to preserve raw probabilities for the three-seed ensemble. |
-| [`astroclimb_qwen3vl8b_three_seed_ensemble/submission.csv`](astroclimb_qwen3vl8b_three_seed_ensemble/submission.csv) | Equal-probability ensemble of seeds 17, 42, and 123; current best Kaggle macro-F1 `0.73604`. |
+| [`astroclimb_qwen3vl8b_three_seed_ensemble/submission.csv`](astroclimb_qwen3vl8b_three_seed_ensemble/submission.csv) | Equal-probability ensemble of seeds 17, 42, and 123; unmasked Kaggle macro-F1 `0.73604`. |
+| [`astroclimb-qwen3vl8b-full-restricted-blend.ipynb`](astroclimb-qwen3vl8b-full-restricted-blend.ipynb) | CPU-only probability blending of the three-seed full-vocabulary ensemble and restricted-loss model; the tested 75%/25% blend scored `0.73590` and was rejected. |
+| [`astroclimb-qwen3vl8b-three-seed-modality-mask.ipynb`](astroclimb-qwen3vl8b-three-seed-modality-mask/astroclimb-qwen3vl8b-three-seed-modality-mask.ipynb) | CPU-only modality-mask postprocessing for the three-seed ensemble; current-best Kaggle macro-F1 `0.73725`. |
 | [`astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb`](astroclimb_alllinear_vision_language_qlora/astroclimb-alllinear-vision-language-qlora.ipynb) | Qwen3-VL-4B all-linear QLoRA across the vision and language towers, trained on all 10,000 labeled pairs. |
 | [`astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb`](astroclimb_language_projector_qlora/astroclimb-language-projector-qlora.ipynb) | Qwen3-VL-4B language-attention plus visual-projector QLoRA trained on all 10,000 labeled pairs. |
 | [`astroclimb_qwen3vl8b_restricted_validation_qlora/astroclimb-qwen3vl8b-restricted-validation-qlora.ipynb`](astroclimb_qwen3vl8b_restricted_validation_qlora/astroclimb-qwen3vl8b-restricted-validation-qlora.ipynb) | Qwen3-VL-8B restricted-loss language-attention experiment on the fixed 9,200/800 split. |
