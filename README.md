@@ -191,14 +191,14 @@ The following scores were obtained by the completed QLoRA runs and their derived
 
 The current best user-reported Kaggle result is **0.73725 macro-F1**, produced by applying a deterministic modality constraint to the `0.73604` three-seed probability ensemble. This is an absolute improvement of `0.00121` over the raw ensemble and `0.00418` over the best individual seed. No model was retrained, and no additional model inference was required.
 
-The `same_figure` relationship is possible only when one object is a figure and the other is a caption. For caption--caption (`CC`) and image--image (`II`) pairs, the system therefore sets the ensemble's `same_figure` probability to zero and renormalizes the other three probabilities. If $p(c\mid x)$ is the raw ensemble distribution and $m(x)$ is the pair modality, the postprocessed distribution is
+The `same_figure` relationship is possible only when one object is a figure and the other is a caption. For caption--caption (`CC`) and image--image (`II`) pairs, the system therefore sets the ensemble's `same_figure` probability to zero and renormalizes the other three probabilities. Let class $0$ denote `same_figure`. If $p(c\mid x)$ is the raw ensemble distribution and $m(x)$ is the pair modality, the postprocessed distribution is
 
 $$
 \widetilde p(c\mid x)=
 \begin{cases}
-0, & m(x)\in\{\mathrm{CC},\mathrm{II}\},\ c=\texttt{same\_figure},\\
-\dfrac{p(c\mid x)}{1-p(\texttt{same\_figure}\mid x)},
-& m(x)\in\{\mathrm{CC},\mathrm{II}\},\ c\ne\texttt{same\_figure},\\
+0, & m(x)\in\{\mathrm{CC},\mathrm{II}\},\ c=0,\\
+\dfrac{p(c\mid x)}{1-p(0\mid x)},
+& m(x)\in\{\mathrm{CC},\mathrm{II}\},\ c\in\{1,2,3\},\\
 p(c\mid x), & m(x)\in\{\mathrm{CI},\mathrm{IC}\}.
 \end{cases}
 $$
