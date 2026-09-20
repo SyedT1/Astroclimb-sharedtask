@@ -13,3 +13,6 @@ venv/
 
 # Kaggle's private scoring labels must not be published.
 data/solution.csv
+
+# Local paper manuscript and build artifacts
+/paper/
